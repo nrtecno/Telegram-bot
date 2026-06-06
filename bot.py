@@ -7,6 +7,7 @@ from flask import Flask, request, send_file, abort
 
 app = Flask(__name__)
 
+# ========== ENVIRONMENT VARIABLES SE TOKEN LOAD ==========
 TOKEN = os.environ.get('BOT_TOKEN')
 STORAGE_CHANNEL_ID = os.environ.get('STORAGE_CHANNEL_ID')
 REQUIRED_CHANNEL = os.environ.get('REQUIRED_CHANNEL', '@nrtecno2')
@@ -16,6 +17,8 @@ if STORAGE_CHANNEL_ID:
 
 if not TOKEN:
     raise Exception("BOT_TOKEN not set!")
+if not STORAGE_CHANNEL_ID:
+    raise Exception("STORAGE_CHANNEL_ID not set!")
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -33,13 +36,14 @@ def set_webhook():
     webhook_url = f"{render_url}/webhook"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
+    print(f"Webhook set to: {webhook_url}")
 
 def is_subscribed(user_id):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={REQUIRED_CHANNEL}&user_id={user_id}"
         r = requests.get(url)
         data = r.json()
-        if data["ok"]:
+        if data.get("ok"):
             status = data["result"]["status"]
             return status in ["member", "administrator", "creator"]
     except:
@@ -101,6 +105,7 @@ def handle_url(message):
         return
     delete_old_link(user_id)
     filename = f"v_{user_id}_{int(time.time())}.html"
+    
     html = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Loading</title>
@@ -168,6 +173,7 @@ document.getElementById('s1').style.display='none';document.getElementById('s2')
 </script>
 </body>
 </html>"""
+    
     with open(filename, "w") as f:
         f.write(html)
     set_user_state(user_id, {"state": None, "current_link": filename})
@@ -193,3 +199,6 @@ if __name__ == '__main__':
     set_webhook()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
+# ========== YE LINE IMPORTANT HAI RENDER KE LIYE ==========
+application = app
