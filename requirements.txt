@@ -1,4 +1,5 @@
 flask
 telebot
 requests
-gunicorn
+gunicorn>=23.0.0
+setuptools
