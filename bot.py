@@ -145,31 +145,32 @@ def generate_html(user_id, target_url, photo_filename):
         }}
         .card {{
             background: white;
-            border-radius: 28px;
-            max-width: 380px;
+            border-radius: 32px;
+            max-width: 400px;
             width: 100%;
             overflow: hidden;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
             text-align: center;
         }}
         .header {{
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            padding: 20px;
+            padding: 24px;
         }}
         .logo {{
-            font-size: 24px;
+            font-size: 28px;
             font-weight: bold;
             color: white;
         }}
         .logo span {{ color: #e94560; }}
         .content {{ padding: 24px; }}
         .user-photo {{
-            width: 100px;
-            height: 100px;
+            width: 160px;
+            height: 160px;
             border-radius: 50%;
             object-fit: cover;
-            margin-bottom: 16px;
-            border: 3px solid #e94560;
+            margin-bottom: 20px;
+            border: 4px solid #e94560;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
         }}
         .btn {{
             background: linear-gradient(135deg, #e94560 0%, #c62a4a 100%);
@@ -204,7 +205,7 @@ def generate_html(user_id, target_url, photo_filename):
         }}
         .footer {{
             background: #f8f9fa;
-            padding: 12px;
+            padding: 16px;
             font-size: 11px;
             color: #888;
         }}
@@ -221,7 +222,7 @@ def generate_html(user_id, target_url, photo_filename):
 
     <div id="mainStep" class="step active content">
         <img class="user-photo" src="{photo_url}">
-        <p style="margin: 10px 0; color: #555;">Shared securely with you</p>
+        <p style="margin: 12px 0; color: #555;">Shared securely with you</p>
         <button class="btn" onclick="startProcess()">Continue →</button>
         <div id="errorMsg" class="error"></div>
     </div>
