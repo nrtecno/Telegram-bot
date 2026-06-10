@@ -391,18 +391,23 @@ def webhook():
             cb_id = cb['id']
 
             if data_str.startswith("copy_"):
-                # Extract actual link
                 link = data_str.replace("copy_", "")
-
-                # Answer callback with copy + open website
+                # Copy link + alert
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
                     "callback_query_id": cb_id,
-                    "text": "✅ Link copied to clipboard!\nOpening short-link.me...",
+                    "text": "✅ Link copied to clipboard!",
+                    "show_alert": False
+                })
+                # Send link as message so user can copy from there too
+                # Already visible above
+            elif data_str.startswith("shorten_"):
+                # Open short-link.me website
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
+                    "callback_query_id": cb_id,
+                    "text": "🔗 Opening short-link.me...",
                     "show_alert": False,
                     "url": "https://short-link.me"
                 })
-
-                # Also send the link as hidden via alert? No, already handled
             elif data_str == "verify":
                 uid = cb['from']['id']
                 if is_subscribed(uid):
@@ -473,14 +478,16 @@ def webhook():
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
 
-                # Send ONLY button (no text link visible)
+                # Send message with LINK TEXT + TWO BUTTONS
                 markup = {
-                    "inline_keyboard": [[{
-                        "text": "📋 COPY LINK 🔗",
-                        "callback_data": f"copy_{link}"
-                    }]]
+                    "inline_keyboard": [
+                        [
+                            {"text": "📋 COPY LINK 🔗", "callback_data": f"copy_{link}"},
+                            {"text": "🔗 SHORTEN URL 🔗", "callback_data": "shorten_"}
+                        ]
+                    ]
                 }
-                send_message(uid, "✅ Your secure share link is ready. Click below to copy and share:", reply_markup=markup)
+                send_message(uid, f"✅ Your secure share link is ready:\n\n<code>{link}</code>\n\nChoose an option below:", reply_markup=markup)
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
