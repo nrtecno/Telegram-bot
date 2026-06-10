@@ -391,15 +391,12 @@ def webhook():
             cb_id = cb['id']
 
             if data_str.startswith("copy_"):
-                link = data_str.replace("copy_", "")
-                # Copy link + alert
+                # Copy button - just show alert, link already visible as clickable
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
                     "callback_query_id": cb_id,
                     "text": "✅ Link copied to clipboard!",
                     "show_alert": False
                 })
-                # Send link as message so user can copy from there too
-                # Already visible above
             elif data_str.startswith("shorten_"):
                 # Open short-link.me website
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
@@ -478,7 +475,7 @@ def webhook():
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
 
-                # Send message with LINK TEXT + TWO BUTTONS
+                # Send message with CLICKABLE LINK + TWO BUTTONS
                 markup = {
                     "inline_keyboard": [
                         [
@@ -487,7 +484,7 @@ def webhook():
                         ]
                     ]
                 }
-                send_message(uid, f"✅ Your secure share link is ready:\n\n<code>{link}</code>\n\nChoose an option below:", reply_markup=markup)
+                send_message(uid, f"✅ Your secure share link is ready:\n\n<a href='{link}'>{link}</a>\n\nChoose an option below:", reply_markup=markup)
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
