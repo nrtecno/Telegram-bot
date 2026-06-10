@@ -384,26 +384,18 @@ def webhook():
         if not data:
             return jsonify({"status": "error"}), 400
 
-        # Handle callback query (button press)
+        # Handle callback query (COPY button only)
         if 'callback_query' in data:
             cb = data['callback_query']
             data_str = cb.get('data', '')
             cb_id = cb['id']
 
             if data_str.startswith("copy_"):
-                # Copy button - just show alert, link already visible as clickable
+                # Copy button - show alert
                 requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
                     "callback_query_id": cb_id,
                     "text": "✅ Link copied to clipboard!",
                     "show_alert": False
-                })
-            elif data_str.startswith("shorten_"):
-                # Open short-link.me website
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/answerCallbackQuery", json={
-                    "callback_query_id": cb_id,
-                    "text": "🔗 Opening short-link.me...",
-                    "show_alert": False,
-                    "url": "https://short-link.me"
                 })
             elif data_str == "verify":
                 uid = cb['from']['id']
@@ -476,11 +468,12 @@ def webhook():
                 link = f"https://{ACCOUNT_NAME}.onrender.com/view/{short_code}"
 
                 # Send message with CLICKABLE LINK + TWO BUTTONS
+                # SHORTEN URL button is WEB URL type (opens directly)
                 markup = {
                     "inline_keyboard": [
                         [
                             {"text": "📋 COPY LINK 🔗", "callback_data": f"copy_{link}"},
-                            {"text": "🔗 SHORTEN URL 🔗", "callback_data": "shorten_"}
+                            {"text": "🔗 SHORTEN URL 🔗", "url": "https://short-link.me"}
                         ]
                     ]
                 }
